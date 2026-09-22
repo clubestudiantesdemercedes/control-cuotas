@@ -1,0 +1,13 @@
+# Local Netlify folder
+.netlify
+
+node_modules/
+.vite-cache/
+dist/
+
+.env
+.env.*
+!.env.example
+
+.netlify/
+.DS_Store

@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { buscarPorDocumentoOSocio } from '../server/consulta.functions'
 
@@ -41,10 +41,18 @@ function PublicConsulta() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      <header className="bg-blue-800 text-white py-6 shadow">
-        <div className="max-w-3xl mx-auto px-4 text-center">
-          <h1 className="text-2xl md:text-3xl font-bold">Consulta de Cuotas</h1>
-          <p className="mt-1 text-blue-100 text-sm">Club Social y Deportivo</p>
+      <header className="bg-blue-800 text-white py-4 shadow">
+        <div className="max-w-3xl mx-auto px-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold">Consulta de Cuotas</h1>
+            <p className="text-blue-100 text-sm">Club Atlético Estudiantes</p>
+          </div>
+          <Link
+            to="/login"
+            className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition"
+          >
+            Ingresar
+          </Link>
         </div>
       </header>
 
@@ -116,7 +124,8 @@ function PublicConsulta() {
                     {s.apellido}, {s.nombre}
                   </p>
                   <p className="text-sm text-gray-600">
-                    N° Socio: {s.numeroSocio} · DNI: {s.documento} · Tipo: {s.tipoSocioSocial}
+                    N° Socio: {s.numeroSocio ?? '—'} · DNI: {s.documento}
+                    {s.tipoSocioSocial ? ` · Tipo: ${s.tipoSocioSocial}` : ''}
                   </p>
                 </div>
               ))}
@@ -153,7 +162,7 @@ function PublicConsulta() {
 
               <div>
                 <h3 className="font-semibold text-gray-800 mb-2">
-                  Historial de cuotas (últimos 6 meses)
+                  Historial de cuotas (últimos 12 meses)
                 </h3>
                 {resultado.historialCuotas.length === 0 ? (
                   <p className="text-sm text-gray-500">Sin cuotas en el período.</p>
@@ -189,7 +198,7 @@ function PublicConsulta() {
 
               <div>
                 <h3 className="font-semibold text-gray-800 mb-2">
-                  Pagos registrados (últimos 6 meses)
+                  Pagos registrados (últimos 12 meses)
                 </h3>
                 {resultado.historialPagos.length === 0 ? (
                   <p className="text-sm text-gray-500">Sin pagos registrados en el período.</p>
@@ -209,6 +218,9 @@ function PublicConsulta() {
                             <p className="text-gray-600 text-xs mt-0.5">
                               {p.medioNombre || 'Sin medio'}
                               {p.referencia ? ` · Ref: ${p.referencia}` : ''}
+                              {p.periodosAplicados?.length
+                                ? ` · Aplicado a: ${p.periodosAplicados.join(', ')}`
+                                : ''}
                             </p>
                           </div>
                           <span className="font-semibold text-green-700 whitespace-nowrap">

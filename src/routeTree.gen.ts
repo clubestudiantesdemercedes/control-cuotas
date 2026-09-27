@@ -12,6 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminTarifarioRouteImport } from './routes/admin/tarifario'
+import { Route as AdminPersonasRouteImport } from './routes/admin/personas'
+import { Route as AdminPagosRouteImport } from './routes/admin/pagos'
+import { Route as AdminDeportesRouteImport } from './routes/admin/deportes'
+import { Route as AdminCuotasRouteImport } from './routes/admin/cuotas'
+import { Route as AdminAdminRouteImport } from './routes/admin/admin'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -28,34 +34,110 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminTarifarioRoute = AdminTarifarioRouteImport.update({
+  id: '/tarifario',
+  path: '/tarifario',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPersonasRoute = AdminPersonasRouteImport.update({
+  id: '/personas',
+  path: '/personas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPagosRoute = AdminPagosRouteImport.update({
+  id: '/pagos',
+  path: '/pagos',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDeportesRoute = AdminDeportesRouteImport.update({
+  id: '/deportes',
+  path: '/deportes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCuotasRoute = AdminCuotasRouteImport.update({
+  id: '/cuotas',
+  path: '/cuotas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAdminRoute = AdminAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
+  '/admin/admin': typeof AdminAdminRoute
+  '/admin/cuotas': typeof AdminCuotasRoute
+  '/admin/deportes': typeof AdminDeportesRoute
+  '/admin/pagos': typeof AdminPagosRoute
+  '/admin/personas': typeof AdminPersonasRoute
+  '/admin/tarifario': typeof AdminTarifarioRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
+  '/admin/admin': typeof AdminAdminRoute
+  '/admin/cuotas': typeof AdminCuotasRoute
+  '/admin/deportes': typeof AdminDeportesRoute
+  '/admin/pagos': typeof AdminPagosRoute
+  '/admin/personas': typeof AdminPersonasRoute
+  '/admin/tarifario': typeof AdminTarifarioRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
+  '/admin/admin': typeof AdminAdminRoute
+  '/admin/cuotas': typeof AdminCuotasRoute
+  '/admin/deportes': typeof AdminDeportesRoute
+  '/admin/pagos': typeof AdminPagosRoute
+  '/admin/personas': typeof AdminPersonasRoute
+  '/admin/tarifario': typeof AdminTarifarioRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/login'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/login'
+    | '/admin/admin'
+    | '/admin/cuotas'
+    | '/admin/deportes'
+    | '/admin/pagos'
+    | '/admin/personas'
+    | '/admin/tarifario'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/login'
-  id: '__root__' | '/' | '/admin' | '/login'
+  to:
+    | '/'
+    | '/admin'
+    | '/login'
+    | '/admin/admin'
+    | '/admin/cuotas'
+    | '/admin/deportes'
+    | '/admin/pagos'
+    | '/admin/personas'
+    | '/admin/tarifario'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/login'
+    | '/admin/admin'
+    | '/admin/cuotas'
+    | '/admin/deportes'
+    | '/admin/pagos'
+    | '/admin/personas'
+    | '/admin/tarifario'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
+  AdminRoute: typeof AdminRouteWithChildren
   LoginRoute: typeof LoginRoute
 }
 
@@ -82,12 +164,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/tarifario': {
+      id: '/admin/tarifario'
+      path: '/tarifario'
+      fullPath: '/admin/tarifario'
+      preLoaderRoute: typeof AdminTarifarioRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/personas': {
+      id: '/admin/personas'
+      path: '/personas'
+      fullPath: '/admin/personas'
+      preLoaderRoute: typeof AdminPersonasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/pagos': {
+      id: '/admin/pagos'
+      path: '/pagos'
+      fullPath: '/admin/pagos'
+      preLoaderRoute: typeof AdminPagosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/deportes': {
+      id: '/admin/deportes'
+      path: '/deportes'
+      fullPath: '/admin/deportes'
+      preLoaderRoute: typeof AdminDeportesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/cuotas': {
+      id: '/admin/cuotas'
+      path: '/cuotas'
+      fullPath: '/admin/cuotas'
+      preLoaderRoute: typeof AdminCuotasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/admin': {
+      id: '/admin/admin'
+      path: '/admin'
+      fullPath: '/admin/admin'
+      preLoaderRoute: typeof AdminAdminRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
 
+interface AdminRouteChildren {
+  AdminAdminRoute: typeof AdminAdminRoute
+  AdminCuotasRoute: typeof AdminCuotasRoute
+  AdminDeportesRoute: typeof AdminDeportesRoute
+  AdminPagosRoute: typeof AdminPagosRoute
+  AdminPersonasRoute: typeof AdminPersonasRoute
+  AdminTarifarioRoute: typeof AdminTarifarioRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminAdminRoute: AdminAdminRoute,
+  AdminCuotasRoute: AdminCuotasRoute,
+  AdminDeportesRoute: AdminDeportesRoute,
+  AdminPagosRoute: AdminPagosRoute,
+  AdminPersonasRoute: AdminPersonasRoute,
+  AdminTarifarioRoute: AdminTarifarioRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
+  AdminRoute: AdminRouteWithChildren,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport

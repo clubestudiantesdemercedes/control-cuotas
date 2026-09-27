@@ -1,4 +1,11 @@
-import { createFileRoute, Link, redirect, useRouter } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  redirect,
+  useRouter,
+  useRouterState,
+} from '@tanstack/react-router'
 import { getCurrentUser, logout } from '../server/auth.functions'
 
 export const Route = createFileRoute('/admin')({
@@ -9,12 +16,22 @@ export const Route = createFileRoute('/admin')({
     }
     return { user }
   },
-  component: AdminPage,
+  component: AdminLayout,
 })
 
-function AdminPage() {
+const menu = [
+  { to: '/admin', label: 'Inicio', exact: true },
+  { to: '/admin/personas', label: 'Personas' },
+  { to: '/admin/deportes', label: 'Deportes' },
+  { to: '/admin/cuotas', label: 'Cuotas' },
+  { to: '/admin/pagos', label: 'Pagos' },
+  { to: '/admin/tarifario', label: 'Tarifario' },
+] as const
+
+function AdminLayout() {
   const { user } = Route.useRouteContext()
   const router = useRouter()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   const handleLogout = async () => {
     await logout()
@@ -22,10 +39,10 @@ function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-blue-900 text-white px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-gray-100 flex flex-col">
+      <header className="bg-blue-900 text-white px-4 py-3 flex items-center justify-between shrink-0">
         <div>
-          <h1 className="font-bold">Panel de administración</h1>
+          <h1 className="font-bold text-sm md:text-base">Control de cuotas</h1>
           <p className="text-xs text-blue-200">
             {user.fullName} · {user.role}
           </p>
@@ -44,17 +61,34 @@ function AdminPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        <p className="text-gray-700 mb-4">
-          Sesión iniciada correctamente. Desde acá vamos a ir agregando:
-        </p>
-        <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
-          <li>Personas y membresías</li>
-          <li>Generación de cuotas</li>
-          <li>Carga de pagos</li>
-          <li>Tarifario y medios de pago</li>
-        </ul>
-      </main>
+      <div className="flex flex-1 min-h-0">
+        <aside className="w-48 bg-white border-r border-gray-200 p-3 shrink-0">
+          <nav className="space-y-1">
+            {menu.map((item) => {
+              const active = item.exact
+                ? pathname === item.to
+                : pathname.startsWith(item.to)
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`block px-3 py-2 rounded-lg text-sm ${
+                    active
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
+          </nav>
+        </aside>
+
+        <main className="flex-1 p-4 md:p-6 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

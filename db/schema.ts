@@ -30,6 +30,8 @@ export const people = pgTable(
     phoneAlt: text('phone_alt'),
     email: text('email'),
     address: text('address'),
+    addressCobro: text('address_cobro'),
+    tieneDebitoAutomatico: boolean('tiene_debito_automatico').notNull().default(false),
     city: text('city'),
     postalCode: text('postal_code'),
     clubRegisteredAt: date('club_registered_at'),

@@ -4,7 +4,10 @@ import {
   listarPersonas,
   crearPersona,
   listarDeportesParaAlta,
+  getPersona,
+  actualizarPersona,
 } from '../../server/personas.functions'
+import { getProximoNumeroSocio } from '../../server/config.functions'
 
 export const Route = createFileRoute('/admin/personas')({
   component: PersonasPage,
@@ -14,11 +17,13 @@ function PersonasPage() {
   const [personas, setPersonas] = useState<any[]>([])
   const [disciplinas, setDisciplinas] = useState<any[]>([])
   const [categorias, setCategorias] = useState<any[]>([])
+  const [proximoNumero, setProximoNumero] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [okMsg, setOkMsg] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
 
   const [documentNumber, setDocumentNumber] = useState('')
   const [firstName, setFirstName] = useState('')
@@ -31,10 +36,15 @@ function PersonasPage() {
   const [tieneDebito, setTieneDebito] = useState(false)
   const [esSocio, setEsSocio] = useState(true)
   const [esDeportista, setEsDeportista] = useState(false)
-  const [memberNumber, setMemberNumber] = useState('')
   const [category, setCategory] = useState<'menor' | 'cadete' | 'activo' | 'vitalicio'>('activo')
   const [disciplinaId, setDisciplinaId] = useState<number | ''>('')
   const [categoriaDeportivaId, setCategoriaDeportivaId] = useState<number | ''>('')
+  const [memberNumberShow, setMemberNumberShow] = useState('')
+
+  // Solo al editar
+  const [hacerSocio, setHacerSocio] = useState(false)
+  const [agregarDeporte, setAgregarDeporte] = useState(false)
+  const [quitarDeporte, setQuitarDeporte] = useState(false)
 
   const categoriasFiltradas = categorias.filter(
     (c) => disciplinaId !== '' && c.disciplinaId === disciplinaId,
@@ -44,12 +54,17 @@ function PersonasPage() {
     setLoading(true)
     setError('')
     try {
-      const [resP, resD] = await Promise.all([listarPersonas(), listarDeportesParaAlta()])
+      const [resP, resD, resN] = await Promise.all([
+        listarPersonas(),
+        listarDeportesParaAlta(),
+        getProximoNumeroSocio(),
+      ])
       if (resP.ok) setPersonas(resP.personas)
       if (resD.ok) {
         setDisciplinas(resD.disciplinas)
         setCategorias(resD.categorias)
       }
+      if (resN.ok) setProximoNumero(resN.proximo)
     } catch (e) {
       console.error(e)
       setError('Error al cargar datos')
@@ -63,6 +78,7 @@ function PersonasPage() {
   }, [])
 
   const resetForm = () => {
+    setEditId(null)
     setDocumentNumber('')
     setFirstName('')
     setLastName('')
@@ -74,50 +90,124 @@ function PersonasPage() {
     setTieneDebito(false)
     setEsSocio(true)
     setEsDeportista(false)
-    setMemberNumber('')
     setCategory('activo')
     setDisciplinaId('')
     setCategoriaDeportivaId('')
+    setMemberNumberShow('')
+    setHacerSocio(false)
+    setAgregarDeporte(false)
+    setQuitarDeporte(false)
   }
 
-  const handleCrear = async (e: React.FormEvent) => {
+  const abrirEditar = async (id: number) => {
+    setError('')
+    setOkMsg('')
+    setHacerSocio(false)
+    setAgregarDeporte(false)
+    setQuitarDeporte(false)
+
+    const res = await getPersona({ data: { id } })
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    const p = res.persona
+    setEditId(p.id)
+    setDocumentNumber(p.documentNumber)
+    setFirstName(p.firstName)
+    setLastName(p.lastName)
+    setBirthDate(p.birthDate ? String(p.birthDate).slice(0, 10) : '')
+    setAddress(p.address || '')
+    setAddressCobro(p.addressCobro || '')
+    setPhone(p.phone || '')
+    setPhoneAlt(p.phoneAlt || '')
+    setTieneDebito(!!p.tieneDebitoAutomatico)
+    setEsSocio(!!res.membresia)
+    setEsDeportista(!!res.inscripcion)
+    setCategory((res.membresia?.category as any) || 'activo')
+    setMemberNumberShow(res.membresia?.memberNumber || '')
+    setDisciplinaId(res.inscripcion?.disciplinaId || '')
+    setCategoriaDeportivaId(res.inscripcion?.categoriaDeportivaId || '')
+    setShowForm(true)
+  }
+
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
     setError('')
     setOkMsg('')
     try {
-      const res = await crearPersona({
-        data: {
-          documentNumber,
-          firstName,
-          lastName,
-          birthDate: birthDate || undefined,
-          address: address || undefined,
-          addressCobro: addressCobro || undefined,
-          phone: phone || undefined,
-          phoneAlt: phoneAlt || undefined,
-          tieneDebitoAutomatico: tieneDebito,
-          esSocio,
-          esDeportista: esSocio ? esDeportista : false,
-          memberNumber: esSocio ? memberNumber || undefined : undefined,
-          category: esSocio && !esDeportista ? category : undefined,
-          disciplinaId:
-            esSocio && esDeportista && disciplinaId !== ''
-              ? Number(disciplinaId)
-              : undefined,
-          categoriaDeportivaId:
-            esSocio && esDeportista && categoriaDeportivaId !== ''
-              ? Number(categoriaDeportivaId)
-              : undefined,
-        },
-      })
-      if (!res.ok) {
-        setError(res.error)
+      if (editId != null) {
+        const quiereDeporte =
+          (esDeportista && !quitarDeporte) || (!esDeportista && agregarDeporte)
+
+        const res = await actualizarPersona({
+          data: {
+            id: editId,
+            documentNumber,
+            firstName,
+            lastName,
+            birthDate: birthDate || undefined,
+            address: address || undefined,
+            addressCobro: addressCobro || undefined,
+            phone: phone || undefined,
+            phoneAlt: phoneAlt || undefined,
+            tieneDebitoAutomatico: tieneDebito,
+            hacerSocio: !esSocio && hacerSocio,
+            category: esSocio || hacerSocio ? category : null,
+            agregarOCambiarDeporte: quiereDeporte,
+            quitarDeporte: esDeportista && quitarDeporte,
+            disciplinaId:
+              quiereDeporte && disciplinaId !== '' ? Number(disciplinaId) : undefined,
+            categoriaDeportivaId:
+              quiereDeporte && categoriaDeportivaId !== ''
+                ? Number(categoriaDeportivaId)
+                : undefined,
+          },
+        })
+        if (!res.ok) setError(res.error)
+        else {
+          setOkMsg('Persona actualizada')
+          resetForm()
+          setShowForm(false)
+          await cargar()
+        }
       } else {
-        setOkMsg('Persona guardada correctamente')
-        resetForm()
-        setShowForm(false)
-        await cargar()
+        const res = await crearPersona({
+          data: {
+            documentNumber,
+            firstName,
+            lastName,
+            birthDate: birthDate || undefined,
+            address: address || undefined,
+            addressCobro: addressCobro || undefined,
+            phone: phone || undefined,
+            phoneAlt: phoneAlt || undefined,
+            tieneDebitoAutomatico: tieneDebito,
+            esSocio,
+            esDeportista: esSocio ? esDeportista : false,
+            category: esSocio && !esDeportista ? category : undefined,
+            disciplinaId:
+              esSocio && esDeportista && disciplinaId !== ''
+                ? Number(disciplinaId)
+                : undefined,
+            categoriaDeportivaId:
+              esSocio && esDeportista && categoriaDeportivaId !== ''
+                ? Number(categoriaDeportivaId)
+                : undefined,
+          },
+        })
+        if (!res.ok) setError(res.error)
+        else {
+          setOkMsg(
+            res.memberNumber
+              ? `Persona guardada. N° socio asignado: ${res.memberNumber}`
+              : 'Persona guardada correctamente',
+          )
+          resetForm()
+          setShowForm(false)
+          await cargar()
+        }
       }
     } catch (e) {
       console.error(e)
@@ -127,18 +217,28 @@ function PersonasPage() {
     }
   }
 
+  const mostrarSelectsDeporte =
+    (editId == null && esSocio && esDeportista) ||
+    (editId != null &&
+      ((esDeportista && !quitarDeporte) ||
+        (!esDeportista && (esSocio || hacerSocio) && agregarDeporte)))
+
   return (
     <div>
-      <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Personas</h2>
           <p className="text-sm text-gray-500">
-            Contacto, cobro, débito y deporte en el listado
+            Alta, edición, socio / deportista
+            {proximoNumero != null ? ` · Próximo n° socio: ${proximoNumero}` : ''}
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => {
+            resetForm()
+            setShowForm((v) => !v)
+          }}
           className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-2 rounded-lg"
         >
           {showForm ? 'Cerrar formulario' : 'Nueva persona'}
@@ -158,9 +258,24 @@ function PersonasPage() {
 
       {showForm && (
         <form
-          onSubmit={handleCrear}
+          onSubmit={handleGuardar}
           className="mb-6 bg-white border rounded-xl p-4 shadow-sm space-y-3 max-w-2xl"
         >
+          <h3 className="font-semibold text-gray-800">
+            {editId != null ? `Editar persona #${editId}` : 'Nueva persona'}
+          </h3>
+
+          {editId != null && memberNumberShow && (
+            <p className="text-sm text-gray-600">
+              N° socio: <strong>{memberNumberShow}</strong>
+            </p>
+          )}
+          {editId == null && esSocio && proximoNumero != null && (
+            <p className="text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-2">
+              Se asignará automáticamente el n° de socio <strong>{proximoNumero}</strong>
+            </p>
+          )}
+
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">DNI</label>
@@ -172,7 +287,9 @@ function PersonasPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Fecha nacimiento</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Fecha nacimiento
+              </label>
               <input
                 type="date"
                 value={birthDate}
@@ -214,7 +331,6 @@ function PersonasPage() {
                 value={addressCobro}
                 onChange={(e) => setAddressCobro(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
-                placeholder="Si es distinto del domicilio"
               />
             </div>
             <div>
@@ -241,45 +357,73 @@ function PersonasPage() {
               checked={tieneDebito}
               onChange={(e) => setTieneDebito(e.target.checked)}
             />
-            Débito automático (aplica descuento en cuotas)
+            Débito automático (descuento)
           </label>
 
-          <div className="border-t pt-3 space-y-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={esSocio}
-                onChange={(e) => {
-                  setEsSocio(e.target.checked)
-                  if (!e.target.checked) setEsDeportista(false)
-                }}
-              />
-              Es socio del club
-            </label>
+          {/* ——— ALTA NUEVA ——— */}
+          {editId == null && (
+            <div className="border-t pt-3 space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={esSocio}
+                  onChange={(e) => {
+                    setEsSocio(e.target.checked)
+                    if (!e.target.checked) setEsDeportista(false)
+                  }}
+                />
+                Es socio del club
+              </label>
 
-            {esSocio && (
-              <>
+              {esSocio && (
+                <>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={esDeportista}
+                      onChange={(e) => setEsDeportista(e.target.checked)}
+                    />
+                    Practica deporte
+                  </label>
+
+                  {!esDeportista && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Categoría social
+                      </label>
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value as any)}
+                        className="w-full border rounded-lg px-3 py-2 text-sm max-w-xs"
+                      >
+                        <option value="menor">Menor</option>
+                        <option value="cadete">Cadete</option>
+                        <option value="activo">Activo</option>
+                        <option value="vitalicio">Vitalicio</option>
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ——— EDICIÓN ——— */}
+          {editId != null && (
+            <div className="border-t pt-3 space-y-3">
+              {!esSocio && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={esDeportista}
-                    onChange={(e) => setEsDeportista(e.target.checked)}
+                    checked={hacerSocio}
+                    onChange={(e) => setHacerSocio(e.target.checked)}
                   />
-                  Practica deporte (socio deportista)
+                  Dar de alta como socio (asigna n° automático)
                 </label>
+              )}
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    N° socio (opcional)
-                  </label>
-                  <input
-                    value={memberNumber}
-                    onChange={(e) => setMemberNumber(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm max-w-xs"
-                  />
-                </div>
-
-                {!esDeportista && (
+              {(esSocio || hacerSocio) && (
+                <>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Categoría social
@@ -289,71 +433,94 @@ function PersonasPage() {
                       onChange={(e) => setCategory(e.target.value as any)}
                       className="w-full border rounded-lg px-3 py-2 text-sm max-w-xs"
                     >
-                      <option value="menor">Menor (hasta 11, no abona)</option>
-                      <option value="cadete">Cadete (12–17)</option>
-                      <option value="activo">Activo (18+)</option>
-                      <option value="vitalicio">Vitalicio (manual, no abona)</option>
+                      <option value="menor">Menor</option>
+                      <option value="cadete">Cadete</option>
+                      <option value="activo">Activo</option>
+                      <option value="vitalicio">Vitalicio</option>
                     </select>
                   </div>
-                )}
 
-                {esDeportista && (
-                  <div className="space-y-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-                    <p className="text-xs text-blue-800">
-                      Categoría social automática por fecha de nacimiento.
-                    </p>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Deporte</label>
-                      <select
-                        value={disciplinaId}
-                        onChange={(e) => {
-                          setDisciplinaId(e.target.value ? Number(e.target.value) : '')
-                          setCategoriaDeportivaId('')
-                        }}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                        required={esDeportista}
-                      >
-                        <option value="">Elegir…</option>
-                        {disciplinas.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.nombre}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Categoría deportiva
-                      </label>
-                      <select
-                        value={categoriaDeportivaId}
-                        onChange={(e) =>
-                          setCategoriaDeportivaId(e.target.value ? Number(e.target.value) : '')
-                        }
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                        required={esDeportista}
-                        disabled={disciplinaId === ''}
-                      >
-                        <option value="">Elegir…</option>
-                        {categoriasFiltradas.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.nombre}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                  {esDeportista ? (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={quitarDeporte}
+                        onChange={(e) => setQuitarDeporte(e.target.checked)}
+                      />
+                      Quitar deporte (queda socio no deportista)
+                    </label>
+                  ) : (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={agregarDeporte}
+                        onChange={(e) => setAgregarDeporte(e.target.checked)}
+                      />
+                      Agregar deporte
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Selects deporte (alta o edición) */}
+          {mostrarSelectsDeporte && (
+            <div className="space-y-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
+              <p className="text-xs text-blue-800">
+                {editId == null
+                  ? 'Categoría social automática por fecha de nacimiento.'
+                  : 'Elegí deporte y categoría deportiva.'}
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Deporte</label>
+                <select
+                  value={disciplinaId}
+                  onChange={(e) => {
+                    setDisciplinaId(e.target.value ? Number(e.target.value) : '')
+                    setCategoriaDeportivaId('')
+                  }}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="">Elegir…</option>
+                  {disciplinas.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Categoría deportiva
+                </label>
+                <select
+                  value={categoriaDeportivaId}
+                  onChange={(e) =>
+                    setCategoriaDeportivaId(e.target.value ? Number(e.target.value) : '')
+                  }
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  required
+                  disabled={disciplinaId === ''}
+                >
+                  <option value="">Elegir…</option>
+                  {categoriasFiltradas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={saving}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
           >
-            {saving ? 'Guardando...' : 'Guardar'}
+            {saving ? 'Guardando...' : editId != null ? 'Actualizar' : 'Guardar'}
           </button>
         </form>
       )}
@@ -374,11 +541,15 @@ function PersonasPage() {
                 <th className="px-3 py-2">Deporte</th>
                 <th className="px-3 py-2">Débito</th>
                 <th className="px-3 py-2">Celular</th>
+                <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
               {personas.map((p) => (
-                <tr key={`${p.id}-${p.deporte || ''}-${p.categoriaDeportiva || ''}`} className="border-t">
+                <tr
+                  key={`${p.id}-${p.deporte || ''}-${p.categoriaDeportiva || ''}`}
+                  className="border-t"
+                >
                   <td className="px-3 py-2 font-medium">
                     {p.lastName}, {p.firstName}
                   </td>
@@ -394,6 +565,15 @@ function PersonasPage() {
                   </td>
                   <td className="px-3 py-2">{p.tieneDebitoAutomatico ? 'Sí' : '—'}</td>
                   <td className="px-3 py-2">{p.phoneAlt ?? '—'}</td>
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => abrirEditar(p.id)}
+                      className="text-blue-600 hover:underline text-xs"
+                    >
+                      Editar
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

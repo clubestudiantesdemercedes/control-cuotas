@@ -292,3 +292,13 @@ export const generacionesCuotas = pgTable('generaciones_cuotas', {
   log: jsonb('log'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
+
+// ============================================================
+// CONFIG DEL CLUB
+// ============================================================
+
+export const clubConfig = pgTable('club_config', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})

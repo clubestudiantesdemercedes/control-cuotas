@@ -26,6 +26,7 @@ const menu = [
   { to: '/admin/cuotas', label: 'Cuotas' },
   { to: '/admin/pagos', label: 'Pagos' },
   { to: '/admin/tarifario', label: 'Tarifario' },
+  { to: '/admin/configuracion', label: 'Configuración' },
 ] as const
 
 function AdminLayout() {

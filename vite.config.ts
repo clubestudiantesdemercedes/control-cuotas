@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 import netlify from '@netlify/vite-plugin-tanstack-start'
 
 export default defineConfig({
-cacheDir: '.vite-cache',
+  cacheDir: 'node_modules/.vite',
   plugins: [
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],

@@ -93,6 +93,10 @@ function LoginPage() {
           </button>
         </form>
 
+        <p className="text-xs text-gray-400 text-center mt-4">
+          Demo: usuario <strong>admin</strong> / clave <strong>estudiantes2026</strong>
+        </p>
+
         <p className="text-center text-xs text-gray-500 mt-3">
           <Link to="/" className="text-blue-600 hover:underline">
             ← Volver a la consulta pública

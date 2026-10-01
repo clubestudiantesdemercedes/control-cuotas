@@ -9,6 +9,7 @@ import {
   numeric,
   jsonb,
   uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core'
 
 // ============================================================
@@ -25,7 +26,7 @@ export const people = pgTable(
     lastName: text('last_name').notNull(),
     birthDate: date('birth_date'),
     photoUrl: text('photo_url'),
-    status: text('status').notNull().default('activo'), // activo | inactivo
+    status: text('status').notNull().default('activo'),
     phone: text('phone'),
     phoneAlt: text('phone_alt'),
     email: text('email'),
@@ -40,9 +41,7 @@ export const people = pgTable(
     recordSource: text('record_source'),
     notes: text('notes'),
   },
-  (t) => [
-    uniqueIndex('people_document_idx').on(t.documentType, t.documentNumber),
-  ],
+  (t) => [uniqueIndex('people_document_idx').on(t.documentType, t.documentNumber)],
 )
 
 export const memberships = pgTable(
@@ -53,8 +52,8 @@ export const memberships = pgTable(
       .notNull()
       .references(() => people.id),
     memberNumber: text('member_number'),
-    category: text('category'), // menor | activo | vitalicio
-    status: text('status').notNull().default('activo'), // activo | baja | suspendido
+    category: text('category'),
+    status: text('status').notNull().default('activo'),
     startDate: date('start_date').notNull(),
     endDate: date('end_date'),
     endReason: text('end_reason'),
@@ -127,7 +126,7 @@ export const users = pgTable('users', {
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   fullName: text('full_name').notNull(),
-  role: text('role').notNull(), // admin | cargador_pagos
+  role: text('role').notNull(),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
@@ -180,7 +179,7 @@ export const inscripcionesDeportivas = pgTable('inscripciones_deportivas', {
 
 export const tarifario = pgTable('tarifario', {
   id: serial('id').primaryKey(),
-  tipoCuota: text('tipo_cuota').notNull(), // social | deportiva
+  tipoCuota: text('tipo_cuota').notNull(),
   tipoSocioSocial: text('tipo_socio_social'),
   disciplinaId: integer('disciplina_id').references(() => disciplinas.id),
   categoriaDeportivaId: integer('categoria_deportiva_id').references(
@@ -208,17 +207,17 @@ export const cuotasGeneradas = pgTable(
       .notNull()
       .references(() => people.id),
     membershipId: integer('membership_id').references(() => memberships.id),
-    tipoCuota: text('tipo_cuota').notNull(), // social | deportiva
+    tipoCuota: text('tipo_cuota').notNull(),
     disciplinaId: integer('disciplina_id').references(() => disciplinas.id),
     categoriaDeportivaId: integer('categoria_deportiva_id').references(
       () => categoriasDeportivas.id,
     ),
-    periodo: text('periodo').notNull(), // YYYY-MM
+    periodo: text('periodo').notNull(),
     concepto: text('concepto').notNull(),
     montoOriginal: numeric('monto_original', { precision: 12, scale: 2 }).notNull(),
     montoFinal: numeric('monto_final', { precision: 12, scale: 2 }).notNull(),
     fechaVencimiento: date('fecha_vencimiento').notNull(),
-    estado: text('estado').notNull().default('pendiente'), // pendiente | pagada | anulada
+    estado: text('estado').notNull().default('pendiente'),
     generadaEn: timestamp('generada_en').defaultNow().notNull(),
   },
   (t) => [
@@ -238,7 +237,7 @@ export const cuotasGeneradas = pgTable(
 export const mediosPago = pgTable('medios_pago', {
   id: serial('id').primaryKey(),
   nombre: text('nombre').notNull(),
-  tipo: text('tipo').notNull(), // efectivo | transferencia | mercado_pago | debito_automatico
+  tipo: text('tipo').notNull(),
   alias: text('alias'),
   cbu: text('cbu'),
   datosPago: text('datos_pago'),
@@ -302,3 +301,49 @@ export const clubConfig = pgTable('club_config', {
   value: text('value').notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
+
+// ============================================================
+// PILOTO: pagos importados desde planilla (Detalle)
+// ============================================================
+
+export const importBatches = pgTable('import_batches', {
+  id: serial('id').primaryKey(),
+  source: text('source').notNull().default('xlsx'),
+  fileName: text('file_name'),
+  totalRows: integer('total_rows').notNull().default(0),
+  newRows: integer('new_rows').notNull().default(0),
+  existingRows: integer('existing_rows').notNull().default(0),
+  errorRows: integer('error_rows').notNull().default(0),
+  noDniRows: integer('no_dni_rows').notNull().default(0),
+  importedBy: text('imported_by'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const pagosImportados = pgTable(
+  'pagos_importados',
+  {
+    id: serial('id').primaryKey(),
+    personId: integer('person_id').references(() => people.id, {
+      onDelete: 'set null',
+    }),
+    dni: text('dni'),
+    fechaPago: date('fecha_pago').notNull(),
+    periodo: text('periodo').notNull(),
+    nombreSocio: text('nombre_socio'),
+    pagador: text('pagador'),
+    categoria: text('categoria'),
+    importe: numeric('importe', { precision: 12, scale: 2 }).notNull(),
+    formaPago: text('forma_pago'),
+    source: text('source').notNull().default('xlsx'),
+    fingerprint: text('fingerprint').notNull(),
+    importBatchId: integer('import_batch_id').references(() => importBatches.id, {
+      onDelete: 'set null',
+    }),
+    importedAt: timestamp('imported_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    fingerprintIdx: uniqueIndex('pagos_importados_fingerprint_idx').on(t.fingerprint),
+    dniIdx: index('pagos_importados_dni_idx').on(t.dni),
+    periodoIdx: index('pagos_importados_periodo_idx').on(t.periodo),
+  }),
+)

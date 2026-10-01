@@ -23,11 +23,11 @@ const menu = [
   { to: '/admin', label: 'Inicio', exact: true },
   { to: '/admin/personas', label: 'Personas' },
   { to: '/admin/deportes', label: 'Deportes' },
-  { to: '/admin/importar-pagos', label: 'Importar pagos' },
   { to: '/admin/cuotas', label: 'Cuotas' },
   { to: '/admin/pagos', label: 'Pagos' },
   { to: '/admin/tarifario', label: 'Tarifario' },
   { to: '/admin/configuracion', label: 'Configuración' },
+  { to: '/admin/importar-pagos', label: 'Importar pagos' },
 ] as const
 
 function AdminLayout() {

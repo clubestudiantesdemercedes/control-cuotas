@@ -35,7 +35,7 @@ function PublicConsulta() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      <header className="bg-blue-800 text-white py-4 shadow">
+      <header className="bg-blue-950 text-white py-4 shadow">
         <div className="max-w-3xl mx-auto px-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl md:text-2xl font-bold">Consulta de pagos</h1>
@@ -141,8 +141,16 @@ function PublicConsulta() {
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-500 mt-6">
-          Si tenés problemas para consultar, acercate a la secretaría del club.
+                <p className="text-center text-xs text-gray-500 mt-6">
+          Si tenés problemas para consultar, escribinos al WhatsApp de básquet:{' '}
+          <a
+            href="https://wa.me/5492324349188"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-800 font-medium hover:underline"
+          >
+            Abrir chat
+          </a>
         </p>
       </main>
     </div>

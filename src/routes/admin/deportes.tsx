@@ -5,6 +5,7 @@ import {
   crearDisciplina,
   listarCategoriasPorDisciplina,
   crearCategoriaDeportiva,
+  actualizarCategoriaDeportiva,
 } from '../../server/deportes.functions'
 
 export const Route = createFileRoute('/admin/deportes')({
@@ -37,7 +38,10 @@ function DeportesPage() {
   const [nombreCat, setNombreCat] = useState('')
   const [edadDesde, setEdadDesde] = useState('')
   const [edadHasta, setEdadHasta] = useState('')
-  const [mesesCobro, setMesesCobro] = useState<number[]>([3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+  const [mesesCobro, setMesesCobro] = useState<number[]>([
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+  ])
+  const [editCatId, setEditCatId] = useState<number | null>(null)
 
   const cargarDisciplinas = async () => {
     setError('')
@@ -57,7 +61,9 @@ function DeportesPage() {
 
   const cargarCategorias = async (id: number) => {
     try {
-      const res = await listarCategoriasPorDisciplina({ data: { disciplinaId: id } })
+      const res = await listarCategoriasPorDisciplina({
+        data: { disciplinaId: id },
+      })
       if (res.ok) setCategorias(res.categorias)
     } catch (e) {
       console.error(e)
@@ -70,7 +76,10 @@ function DeportesPage() {
   }, [])
 
   useEffect(() => {
-    if (disciplinaId != null) cargarCategorias(disciplinaId)
+    if (disciplinaId != null) {
+      cancelarEdicionCategoria()
+      cargarCategorias(disciplinaId)
+    }
   }, [disciplinaId])
 
   const handleCrearDeporte = async (e: React.FormEvent) => {
@@ -90,32 +99,72 @@ function DeportesPage() {
 
   const toggleMes = (n: number) => {
     setMesesCobro((prev) =>
-      prev.includes(n) ? prev.filter((m) => m !== n) : [...prev, n].sort((a, b) => a - b),
+      prev.includes(n)
+        ? prev.filter((m) => m !== n)
+        : [...prev, n].sort((a, b) => a - b),
     )
   }
 
-  const handleCrearCategoria = async (e: React.FormEvent) => {
+  const cancelarEdicionCategoria = () => {
+    setEditCatId(null)
+    setNombreCat('')
+    setEdadDesde('')
+    setEdadHasta('')
+    setMesesCobro([3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+  }
+
+  const abrirEditarCategoria = (c: any) => {
+    setEditCatId(c.id)
+    setNombreCat(c.nombre || '')
+    setEdadDesde(c.edadDesde != null ? String(c.edadDesde) : '')
+    setEdadHasta(c.edadHasta != null ? String(c.edadHasta) : '')
+    setMesesCobro(Array.isArray(c.mesesCobro) ? [...c.mesesCobro] : [])
+    setOkMsg('')
+    setError('')
+  }
+
+  const handleGuardarCategoria = async (e: React.FormEvent) => {
     e.preventDefault()
     if (disciplinaId == null) return
     setError('')
     setOkMsg('')
+
+    const payload = {
+      nombre: nombreCat,
+      edadDesde: edadDesde ? Number(edadDesde) : null,
+      edadHasta: edadHasta ? Number(edadHasta) : null,
+      mesesCobro,
+    }
+
+    if (editCatId != null) {
+      const res = await actualizarCategoriaDeportiva({
+        data: {
+          id: editCatId,
+          ...payload,
+        },
+      })
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      setOkMsg('Categoría actualizada')
+      cancelarEdicionCategoria()
+      await cargarCategorias(disciplinaId)
+      return
+    }
+
     const res = await crearCategoriaDeportiva({
       data: {
         disciplinaId,
-        nombre: nombreCat,
-        edadDesde: edadDesde ? Number(edadDesde) : null,
-        edadHasta: edadHasta ? Number(edadHasta) : null,
-        mesesCobro,
+        ...payload,
       },
     })
     if (!res.ok) {
       setError(res.error)
       return
     }
-    setNombreCat('')
-    setEdadDesde('')
-    setEdadHasta('')
     setOkMsg('Categoría creada')
+    cancelarEdicionCategoria()
     await cargarCategorias(disciplinaId)
   }
 
@@ -126,7 +175,8 @@ function DeportesPage() {
       <div>
         <h2 className="text-xl font-bold text-gray-800">Deportes</h2>
         <p className="text-sm text-gray-500">
-          Disciplinas y categorías (cada deporte tiene las suyas). Los importes se cargarán después en tarifario.
+          Disciplinas y categorías (cada deporte tiene las suyas). Los importes
+          se cargarán después en tarifario.
         </p>
       </div>
 
@@ -147,7 +197,7 @@ function DeportesPage() {
           <input
             value={nuevoDeporte}
             onChange={(e) => setNuevoDeporte(e.target.value)}
-            placeholder="Ej. Fútbol"
+            placeholder="Ej. Básquet"
             className="flex-1 border rounded-lg px-3 py-2 text-sm"
             required
           />
@@ -163,7 +213,9 @@ function DeportesPage() {
       <div className="bg-white border rounded-xl p-4 shadow-sm">
         <h3 className="font-semibold text-gray-800 mb-2">Seleccionar deporte</h3>
         {disciplinas.length === 0 ? (
-          <p className="text-sm text-gray-500">Todavía no hay deportes cargados.</p>
+          <p className="text-sm text-gray-500">
+            Todavía no hay deportes cargados.
+          </p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {disciplinas.map((d) => (
@@ -188,22 +240,28 @@ function DeportesPage() {
         <>
           <div className="bg-white border rounded-xl p-4 shadow-sm max-w-xl">
             <h3 className="font-semibold text-gray-800 mb-2">
-              Nueva categoría en {disciplinaActual?.nombre}
+              {editCatId != null
+                ? `Editar categoría en ${disciplinaActual?.nombre}`
+                : `Nueva categoría en ${disciplinaActual?.nombre}`}
             </h3>
-            <form onSubmit={handleCrearCategoria} className="space-y-3">
+            <form onSubmit={handleGuardarCategoria} className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Nombre</label>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Nombre
+                </label>
                 <input
                   value={nombreCat}
                   onChange={(e) => setNombreCat(e.target.value)}
-                  placeholder="Ej. Infantiles, 7ª, Primera"
+                  placeholder="Ej. 2015, U13, Primera"
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   required
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Edad desde (opcional)</label>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Edad desde (opcional)
+                  </label>
                   <input
                     type="number"
                     value={edadDesde}
@@ -212,7 +270,9 @@ function DeportesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Edad hasta (opcional)</label>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Edad hasta (opcional)
+                  </label>
                   <input
                     type="number"
                     value={edadHasta}
@@ -222,7 +282,9 @@ function DeportesPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Meses de cobro</label>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Meses de cobro
+                </label>
                 <div className="flex flex-wrap gap-2">
                   {MESES.map((m) => (
                     <button
@@ -240,12 +302,23 @@ function DeportesPage() {
                   ))}
                 </div>
               </div>
-              <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
-              >
-                Guardar categoría
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
+                >
+                  {editCatId != null ? 'Actualizar categoría' : 'Guardar categoría'}
+                </button>
+                {editCatId != null && (
+                  <button
+                    type="button"
+                    onClick={cancelarEdicionCategoria}
+                    className="border text-sm px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
             </form>
           </div>
 
@@ -254,7 +327,9 @@ function DeportesPage() {
               Categorías de {disciplinaActual?.nombre}
             </h3>
             {categorias.length === 0 ? (
-              <p className="p-4 text-sm text-gray-500">Sin categorías todavía.</p>
+              <p className="p-4 text-sm text-gray-500">
+                Sin categorías todavía.
+              </p>
             ) : (
               <table className="w-full text-sm mt-2">
                 <thead className="bg-gray-50 text-left text-gray-600">
@@ -262,6 +337,7 @@ function DeportesPage() {
                     <th className="px-3 py-2">Nombre</th>
                     <th className="px-3 py-2">Edades</th>
                     <th className="px-3 py-2">Meses cobro</th>
+                    <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -277,6 +353,15 @@ function DeportesPage() {
                         {Array.isArray(c.mesesCobro)
                           ? c.mesesCobro.join(', ')
                           : '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => abrirEditarCategoria(c)}
+                          className="text-blue-600 hover:underline text-xs"
+                        >
+                          Editar
+                        </button>
                       </td>
                     </tr>
                   ))}

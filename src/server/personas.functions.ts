@@ -1,4 +1,4 @@
-import { createServerFn } from '@tanstack/react-start'
+﻿import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, isNull, and, asc } from 'drizzle-orm'
 import { db } from '../../db'
 import {
@@ -10,6 +10,7 @@ import {
   clubConfig,
 } from '../../db/schema'
 import { requireUser } from './auth.server'
+import { resolverCategoriaDeportiva } from './deportes.functions'
 
 function calcularCategoriaPorEdad(
   birthDate?: string | null,
@@ -130,7 +131,7 @@ export const getPersona = createServerFn({ method: 'GET' })
       )
       .limit(1)
 
-    const [insc] = await db
+    const inscripciones = await db
       .select({
         id: inscripcionesDeportivas.id,
         disciplinaId: inscripcionesDeportivas.disciplinaId,
@@ -139,10 +140,16 @@ export const getPersona = createServerFn({ method: 'GET' })
         categoriaDeportiva: categoriasDeportivas.nombre,
       })
       .from(inscripcionesDeportivas)
-      .leftJoin(disciplinas, eq(inscripcionesDeportivas.disciplinaId, disciplinas.id))
+      .leftJoin(
+        disciplinas,
+        eq(inscripcionesDeportivas.disciplinaId, disciplinas.id),
+      )
       .leftJoin(
         categoriasDeportivas,
-        eq(inscripcionesDeportivas.categoriaDeportivaId, categoriasDeportivas.id),
+        eq(
+          inscripcionesDeportivas.categoriaDeportivaId,
+          categoriasDeportivas.id,
+        ),
       )
       .where(
         and(
@@ -150,16 +157,14 @@ export const getPersona = createServerFn({ method: 'GET' })
           eq(inscripcionesDeportivas.activa, true),
         ),
       )
-      .limit(1)
 
     return {
       ok: true as const,
       persona,
       membresia: membresia ?? null,
-      inscripcion: insc ?? null,
+      inscripcion: inscripciones[0] ?? null,
     }
   })
-
 export const listarDeportesParaAlta = createServerFn({ method: 'GET' }).handler(
   async () => {
     await requireUser()
@@ -195,7 +200,6 @@ export const crearPersona = createServerFn({ method: 'POST' })
       esDeportista: boolean
       category?: 'menor' | 'cadete' | 'activo' | 'vitalicio'
       disciplinaId?: number
-      categoriaDeportivaId?: number
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -206,20 +210,34 @@ export const crearPersona = createServerFn({ method: 'POST' })
     const lastName = data.lastName.trim()
 
     if (!documentNumber || !firstName || !lastName) {
-      return { ok: false as const, error: 'Completá documento, nombre y apellido' }
+      return {
+        ok: false as const,
+        error: 'Completá documento, nombre y apellido',
+      }
     }
 
     if (data.esSocio && data.esDeportista) {
-      if (!data.disciplinaId || !data.categoriaDeportivaId) {
+      if (!data.disciplinaId) {
         return {
           ok: false as const,
-          error: 'Elegí el deporte y la categoría deportiva',
+          error: 'Elegí el deporte',
+        }
+      }
+
+      if (!data.birthDate) {
+        return {
+          ok: false as const,
+          error:
+            'La persona necesita fecha de nacimiento para determinar la categoría deportiva',
         }
       }
     }
 
     if (data.esSocio && !data.esDeportista && !data.category) {
-      return { ok: false as const, error: 'Elegí la categoría social' }
+      return {
+        ok: false as const,
+        error: 'Elegí la categoría social',
+      }
     }
 
     try {
@@ -242,12 +260,17 @@ export const crearPersona = createServerFn({ method: 'POST' })
         .returning({ id: people.id })
 
       if (!data.esSocio) {
-        return { ok: true as const, personId: persona.id }
+        return {
+          ok: true as const,
+          personId: persona.id,
+        }
       }
 
       const startDate = new Date().toISOString().slice(0, 10)
       const memberNumber = await obtenerYReservarNumeroSocio()
 
+      // La categoría social sigue siendo independiente
+      // de la categoría deportiva.
       const category = data.esDeportista
         ? calcularCategoriaPorEdad(data.birthDate)
         : data.category!
@@ -260,11 +283,30 @@ export const crearPersona = createServerFn({ method: 'POST' })
         startDate,
       })
 
-      if (data.esDeportista && data.disciplinaId && data.categoriaDeportivaId) {
+      let categoriaDeportivaId: number | null = null
+      let nombreCategoriaDeportiva: string | null = null
+
+      if (data.esDeportista && data.disciplinaId && data.birthDate) {
+        const resultadoCategoria = await resolverCategoriaDeportiva(
+          data.disciplinaId,
+          data.birthDate,
+        )
+
+        if (!resultadoCategoria.ok) {
+          return {
+            ok: false as const,
+            error: resultadoCategoria.error,
+          }
+        }
+
+        categoriaDeportivaId = resultadoCategoria.categoria.id
+        nombreCategoriaDeportiva =
+          resultadoCategoria.categoria.nombre
+
         await db.insert(inscripcionesDeportivas).values({
           personId: persona.id,
           disciplinaId: data.disciplinaId,
-          categoriaDeportivaId: data.categoriaDeportivaId,
+          categoriaDeportivaId,
           esHermano: false,
           esTercerHermano: false,
           esSegundoDeporte: false,
@@ -273,22 +315,33 @@ export const crearPersona = createServerFn({ method: 'POST' })
         })
       }
 
-      return { ok: true as const, personId: persona.id, memberNumber }
+      return {
+        ok: true as const,
+        personId: persona.id,
+        memberNumber,
+        categoriaDeportivaId,
+        categoriaDeportiva: nombreCategoriaDeportiva,
+      }
     } catch (err: any) {
       console.error(err)
+
       if (
         String(err?.message || err).includes('unique') ||
         String(err).includes('duplicate')
       ) {
         return {
           ok: false as const,
-          error: 'Ya existe una persona con ese documento o n° de socio',
+          error:
+            'Ya existe una persona con ese documento o n° de socio',
         }
       }
-      return { ok: false as const, error: 'No se pudo guardar la persona' }
+
+      return {
+        ok: false as const,
+        error: 'No se pudo guardar la persona',
+      }
     }
   })
-
 export const actualizarPersona = createServerFn({ method: 'POST' })
   .inputValidator(
     (data: {
@@ -302,7 +355,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       phone?: string
       phoneAlt?: string
       tieneDebitoAutomatico?: boolean
-      // acciones de membresía / deporte
+      // acciones de membresÃ­a / deporte
       hacerSocio?: boolean
       category?: 'menor' | 'cadete' | 'activo' | 'vitalicio' | null
       agregarOCambiarDeporte?: boolean
@@ -319,7 +372,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
     const lastName = data.lastName.trim()
 
     if (!documentNumber || !firstName || !lastName) {
-      return { ok: false as const, error: 'Completá documento, nombre y apellido' }
+      return { ok: false as const, error: 'CompletÃ¡ documento, nombre y apellido' }
     }
 
     try {
@@ -353,7 +406,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
 
       const startDate = new Date().toISOString().slice(0, 10)
 
-      // No socio → socio
+      // No socio â†’ socio
       if (!mem && data.hacerSocio) {
         const memberNumber = await obtenerYReservarNumeroSocio()
         const category =
@@ -367,7 +420,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
         })
       }
 
-      // Actualizar categoría social si ya es socio
+      // Actualizar categorÃ­a social si ya es socio
       if (mem && data.category) {
         await db
           .update(memberships)
@@ -411,7 +464,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
             })
             .where(eq(inscripcionesDeportivas.id, insc.id))
         } else if (!insc || data.quitarDeporte) {
-          // si acabamos de quitar, o no tenía: crear nueva
+          // si acabamos de quitar, o no tenÃ­a: crear nueva
           if (insc && data.quitarDeporte) {
             // ya desactivada arriba
           }
@@ -434,3 +487,5 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       return { ok: false as const, error: 'No se pudo actualizar' }
     }
   })
+
+

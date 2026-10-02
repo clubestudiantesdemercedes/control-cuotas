@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+﻿import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import {
   listarPersonas,
@@ -7,6 +7,7 @@ import {
   getPersona,
   actualizarPersona,
 } from '../../server/personas.functions'
+import { previsualizarCategoriaDeportiva } from '../../server/categoria.functions'
 import { getProximoNumeroSocio } from '../../server/config.functions'
 
 export const Route = createFileRoute('/admin/personas')({
@@ -16,7 +17,6 @@ export const Route = createFileRoute('/admin/personas')({
 function PersonasPage() {
   const [personas, setPersonas] = useState<any[]>([])
   const [disciplinas, setDisciplinas] = useState<any[]>([])
-  const [categorias, setCategorias] = useState<any[]>([])
   const [proximoNumero, setProximoNumero] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -41,14 +41,76 @@ function PersonasPage() {
   const [categoriaDeportivaId, setCategoriaDeportivaId] = useState<number | ''>('')
   const [memberNumberShow, setMemberNumberShow] = useState('')
 
+  const [categoriaAutomatica, setCategoriaAutomatica] = useState<{
+  id: number
+  nombre: string
+  edadDeportiva?: number
+  anioNacimiento?: number
+  anioActual?: number
+} | null>(null)
+
+const [categoriaLoading, setCategoriaLoading] = useState(false)
+const [categoriaError, setCategoriaError] = useState('')
+
   // Solo al editar
   const [hacerSocio, setHacerSocio] = useState(false)
   const [agregarDeporte, setAgregarDeporte] = useState(false)
   const [quitarDeporte, setQuitarDeporte] = useState(false)
+useEffect(() => {
+  let cancelado = false
 
-  const categoriasFiltradas = categorias.filter(
-    (c) => disciplinaId !== '' && c.disciplinaId === disciplinaId,
-  )
+  async function calcularCategoria() {
+    if (!esDeportista || disciplinaId === '' || !birthDate) {
+      setCategoriaAutomatica(null)
+      setCategoriaError('')
+      setCategoriaLoading(false)
+      return
+    }
+
+    setCategoriaLoading(true)
+    setCategoriaError('')
+    setCategoriaAutomatica(null)
+
+    try {
+      const res = await previsualizarCategoriaDeportiva({
+        data: {
+          disciplinaId: Number(disciplinaId),
+          birthDate,
+        },
+      })
+
+      if (cancelado) return
+
+      if (!res.ok) {
+        setCategoriaError(res.error)
+        return
+      }
+
+      setCategoriaAutomatica({
+        id: res.categoria.id,
+        nombre: res.categoria.nombre,
+        edadDeportiva: res.edadDeportiva,
+        anioNacimiento: res.anioNacimiento,
+        anioActual: res.anioActual,
+      })
+    } catch (err) {
+      if (!cancelado) {
+        console.error(err)
+        setCategoriaError('No se pudo calcular la categoría deportiva')
+      }
+    } finally {
+      if (!cancelado) {
+        setCategoriaLoading(false)
+      }
+    }
+  }
+
+  calcularCategoria()
+
+  return () => {
+    cancelado = true
+  }
+}, [esDeportista, disciplinaId, birthDate])
 
   const cargar = async () => {
     setLoading(true)
@@ -62,7 +124,6 @@ function PersonasPage() {
       if (resP.ok) setPersonas(resP.personas)
       if (resD.ok) {
         setDisciplinas(resD.disciplinas)
-        setCategorias(resD.categorias)
       }
       if (resN.ok) setProximoNumero(resN.proximo)
     } catch (e) {
@@ -191,10 +252,6 @@ function PersonasPage() {
               esSocio && esDeportista && disciplinaId !== ''
                 ? Number(disciplinaId)
                 : undefined,
-            categoriaDeportivaId:
-              esSocio && esDeportista && categoriaDeportivaId !== ''
-                ? Number(categoriaDeportivaId)
-                : undefined,
           },
         })
         if (!res.ok) setError(res.error)
@@ -216,14 +273,7 @@ function PersonasPage() {
       setSaving(false)
     }
   }
-
-  const mostrarSelectsDeporte =
-    (editId == null && esSocio && esDeportista) ||
-    (editId != null &&
-      ((esDeportista && !quitarDeporte) ||
-        (!esDeportista && (esSocio || hacerSocio) && agregarDeporte)))
-
-  return (
+return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
@@ -360,161 +410,147 @@ function PersonasPage() {
             Débito automático (descuento)
           </label>
 
-          {/* ——— ALTA NUEVA ——— */}
+          {/* --- ALTA NUEVA --- */}
           {editId == null && (
-            <div className="border-t pt-3 space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={esSocio}
-                  onChange={(e) => {
-                    setEsSocio(e.target.checked)
-                    if (!e.target.checked) setEsDeportista(false)
-                  }}
-                />
-                Es socio del club
+  <div className="border-t pt-3 space-y-2">
+    <label className="flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={esSocio}
+        onChange={(e) => {
+          setEsSocio(e.target.checked)
+          if (!e.target.checked) setEsDeportista(false)
+        }}
+      />
+      Es socio del club
+    </label>
+
+    {esSocio && (
+      <>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={esDeportista}
+            onChange={(e) => setEsDeportista(e.target.checked)}
+          />
+          Practica deporte
+        </label>
+
+        {!esDeportista && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Categoría social
+            </label>
+
+            <select
+              value={category}
+              onChange={(e) =>
+                setCategory(
+                  e.target.value as
+                    | 'menor'
+                    | 'cadete'
+                    | 'activo'
+                    | 'vitalicio',
+                )
+              }
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              required
+            >
+              <option value="menor">Menor</option>
+              <option value="cadete">Cadete</option>
+              <option value="activo">Activo</option>
+              <option value="vitalicio">Vitalicio</option>
+            </select>
+          </div>
+        )}
+
+        {esDeportista && (
+          <div className="space-y-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
+            <p className="text-xs text-blue-800">
+              La categoría deportiva se determina automáticamente según el
+              deporte y la fecha de nacimiento.
+            </p>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Deporte
               </label>
 
-              {esSocio && (
-                <>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={esDeportista}
-                      onChange={(e) => setEsDeportista(e.target.checked)}
-                    />
-                    Practica deporte
-                  </label>
+              <select
+                value={disciplinaId}
+                onChange={(e) => {
+                  setDisciplinaId(
+                    e.target.value ? Number(e.target.value) : '',
+                  )
+                  setCategoriaAutomatica(null)
+                  setCategoriaError('')
+                }}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                required
+              >
+                <option value="">Elegir...</option>
 
-                  {!esDeportista && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Categoría social
-                      </label>
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value as any)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm max-w-xs"
-                      >
-                        <option value="menor">Menor</option>
-                        <option value="cadete">Cadete</option>
-                        <option value="activo">Activo</option>
-                        <option value="vitalicio">Vitalicio</option>
-                      </select>
-                    </div>
-                  )}
-                </>
-              )}
+                {disciplinas.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
 
-          {/* ——— EDICIÓN ——— */}
-          {editId != null && (
-            <div className="border-t pt-3 space-y-3">
-              {!esSocio && (
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={hacerSocio}
-                    onChange={(e) => setHacerSocio(e.target.checked)}
-                  />
-                  Dar de alta como socio (asigna n° automático)
-                </label>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Categoría deportiva
+              </label>
+
+              {categoriaLoading && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                  Calculando categoría...
+                </div>
               )}
 
-              {(esSocio || hacerSocio) && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Categoría social
-                    </label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value as any)}
-                      className="w-full border rounded-lg px-3 py-2 text-sm max-w-xs"
-                    >
-                      <option value="menor">Menor</option>
-                      <option value="cadete">Cadete</option>
-                      <option value="activo">Activo</option>
-                      <option value="vitalicio">Vitalicio</option>
-                    </select>
+              {!categoriaLoading && categoriaAutomatica && (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                  <div className="text-sm font-semibold text-green-800">
+                    {categoriaAutomatica.nombre}
                   </div>
 
-                  {esDeportista ? (
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={quitarDeporte}
-                        onChange={(e) => setQuitarDeporte(e.target.checked)}
-                      />
-                      Quitar deporte (queda socio no deportista)
-                    </label>
-                  ) : (
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={agregarDeporte}
-                        onChange={(e) => setAgregarDeporte(e.target.checked)}
-                      />
-                      Agregar deporte
-                    </label>
+                  {categoriaAutomatica.edadDeportiva != null && (
+                    <div className="text-xs text-green-700 mt-1">
+                      Edad deportiva: {categoriaAutomatica.edadDeportiva} años
+                    </div>
                   )}
-                </>
+
+                  {categoriaAutomatica.anioNacimiento != null && (
+                    <div className="text-xs text-green-700">
+                      Año de nacimiento: {categoriaAutomatica.anioNacimiento}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Selects deporte (alta o edición) */}
-          {mostrarSelectsDeporte && (
-            <div className="space-y-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-              <p className="text-xs text-blue-800">
-                {editId == null
-                  ? 'Categoría social automática por fecha de nacimiento.'
-                  : 'Elegí deporte y categoría deportiva.'}
-              </p>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Deporte</label>
-                <select
-                  value={disciplinaId}
-                  onChange={(e) => {
-                    setDisciplinaId(e.target.value ? Number(e.target.value) : '')
-                    setCategoriaDeportivaId('')
-                  }}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  required
-                >
-                  <option value="">Elegir…</option>
-                  {disciplinas.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Categoría deportiva
-                </label>
-                <select
-                  value={categoriaDeportivaId}
-                  onChange={(e) =>
-                    setCategoriaDeportivaId(e.target.value ? Number(e.target.value) : '')
-                  }
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  required
-                  disabled={disciplinaId === ''}
-                >
-                  <option value="">Elegir…</option>
-                  {categoriasFiltradas.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
+              {!categoriaLoading && categoriaError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {categoriaError}
+                </div>
+              )}
 
+              {!categoriaLoading &&
+                !categoriaAutomatica &&
+                !categoriaError &&
+                disciplinaId !== '' &&
+                birthDate && (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                    No se pudo determinar todavía la categoría.
+                  </div>
+                )}
+            </div>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+)}
           <button
             type="submit"
             disabled={saving}
@@ -583,3 +619,13 @@ function PersonasPage() {
     </div>
   )
 }
+
+
+
+
+
+
+
+
+
+

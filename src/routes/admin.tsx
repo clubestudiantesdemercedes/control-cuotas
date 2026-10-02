@@ -1,4 +1,4 @@
-import {
+﻿import {
   createFileRoute,
   Link,
   Outlet,
@@ -21,12 +21,12 @@ export const Route = createFileRoute('/admin')({
 
 const menu = [
   { to: '/admin', label: 'Inicio', exact: true },
-  { to: '/admin/personas', label: 'Personas' },
-  { to: '/admin/deportes', label: 'Deportes' },
-  { to: '/admin/cuotas', label: 'Cuotas' },
-  { to: '/admin/pagos', label: 'Pagos' },
-  { to: '/admin/tarifario', label: 'Tarifario' },
-  { to: '/admin/configuracion', label: 'Configuración' },
+  { to: '/admin/personas', label: 'Personas', exact: false },
+  { to: '/admin/deportes', label: 'Deportes', exact: false },
+  { to: '/admin/cuotas', label: 'Cuotas', exact: false },
+  { to: '/admin/pagos', label: 'Pagos', exact: false },
+  { to: '/admin/tarifario', label: 'Tarifario', exact: false },
+  { to: '/admin/configuracion', label: 'Configuración', exact: false },
 ] as const
 
 function AdminLayout() {
@@ -93,3 +93,4 @@ function AdminLayout() {
     </div>
   )
 }
+

@@ -1,4 +1,4 @@
-import { createServerFn } from '@tanstack/react-start'
+﻿import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, isNull, and, asc } from 'drizzle-orm'
 import { db } from '../../db'
 import {
@@ -355,11 +355,13 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       phone?: string
       phoneAlt?: string
       tieneDebitoAutomatico?: boolean
+      // acciones de membresÃ­a / deporte
       hacerSocio?: boolean
       category?: 'menor' | 'cadete' | 'activo' | 'vitalicio' | null
       agregarOCambiarDeporte?: boolean
       quitarDeporte?: boolean
       disciplinaId?: number
+      categoriaDeportivaId?: number
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -370,29 +372,10 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
     const lastName = data.lastName.trim()
 
     if (!documentNumber || !firstName || !lastName) {
-      return {
-        ok: false as const,
-        error: 'Completá documento, nombre y apellido',
-      }
+      return { ok: false as const, error: 'CompletÃ¡ documento, nombre y apellido' }
     }
 
     try {
-      const [personaActual] = await db
-        .select({
-          id: people.id,
-          birthDate: people.birthDate,
-        })
-        .from(people)
-        .where(eq(people.id, data.id))
-        .limit(1)
-
-      if (!personaActual) {
-        return {
-          ok: false as const,
-          error: 'No se encontró la persona',
-        }
-      }
-
       await db
         .update(people)
         .set({
@@ -423,14 +406,11 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
 
       const startDate = new Date().toISOString().slice(0, 10)
 
-      // No socio → socio
-      let esSocioAhora = !!mem
-
+      // No socio â†’ socio
       if (!mem && data.hacerSocio) {
         const memberNumber = await obtenerYReservarNumeroSocio()
         const category =
           data.category || calcularCategoriaPorEdad(data.birthDate)
-
         await db.insert(memberships).values({
           personId: data.id,
           memberNumber,
@@ -438,18 +418,13 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
           status: 'activo',
           startDate,
         })
-
-        esSocioAhora = true
       }
 
-      // Actualizar categoría social si ya era socio
+      // Actualizar categorÃ­a social si ya es socio
       if (mem && data.category) {
         await db
           .update(memberships)
-          .set({
-            category: data.category,
-            updatedAt: new Date(),
-          })
+          .set({ category: data.category, updatedAt: new Date() })
           .where(eq(memberships.id, mem.id))
       }
 
@@ -468,57 +443,35 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       if (insc && data.quitarDeporte) {
         await db
           .update(inscripcionesDeportivas)
-          .set({
-            activa: false,
-            fechaFin: startDate,
-          })
+          .set({ activa: false, fechaFin: startDate })
           .where(eq(inscripcionesDeportivas.id, insc.id))
       }
 
-      // Agregar o cambiar deporte
+      // Agregar o cambiar deporte (requiere ser socio)
+      const esSocioAhora = mem || data.hacerSocio
       if (
         esSocioAhora &&
         data.agregarOCambiarDeporte &&
-        data.disciplinaId
+        data.disciplinaId &&
+        data.categoriaDeportivaId
       ) {
-        const birthDate =
-          data.birthDate || String(personaActual.birthDate || '')
-
-        if (!birthDate) {
-          return {
-            ok: false as const,
-            error:
-              'La persona necesita fecha de nacimiento para determinar la categoría deportiva',
-          }
-        }
-
-        const resultadoCategoria = await resolverCategoriaDeportiva(
-          data.disciplinaId,
-          birthDate,
-        )
-
-        if (!resultadoCategoria.ok) {
-          return {
-            ok: false as const,
-            error: resultadoCategoria.error,
-          }
-        }
-
-        const categoriaDeportivaId = resultadoCategoria.categoria.id
-
         if (insc && !data.quitarDeporte) {
           await db
             .update(inscripcionesDeportivas)
             .set({
               disciplinaId: data.disciplinaId,
-              categoriaDeportivaId,
+              categoriaDeportivaId: data.categoriaDeportivaId,
             })
             .where(eq(inscripcionesDeportivas.id, insc.id))
-        } else {
+        } else if (!insc || data.quitarDeporte) {
+          // si acabamos de quitar, o no tenÃ­a: crear nueva
+          if (insc && data.quitarDeporte) {
+            // ya desactivada arriba
+          }
           await db.insert(inscripcionesDeportivas).values({
             personId: data.id,
             disciplinaId: data.disciplinaId,
-            categoriaDeportivaId,
+            categoriaDeportivaId: data.categoriaDeportivaId,
             esHermano: false,
             esTercerHermano: false,
             esSegundoDeporte: false,
@@ -528,15 +481,11 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
         }
       }
 
-      return {
-        ok: true as const,
-      }
+      return { ok: true as const }
     } catch (err) {
       console.error(err)
-
-      return {
-        ok: false as const,
-        error: 'No se pudo actualizar',
-      }
+      return { ok: false as const, error: 'No se pudo actualizar' }
     }
   })
+
+

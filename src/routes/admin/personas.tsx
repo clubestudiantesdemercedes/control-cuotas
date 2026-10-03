@@ -33,6 +33,7 @@ function PersonasPage() {
   const [addressCobro, setAddressCobro] = useState('')
   const [phone, setPhone] = useState('')
   const [phoneAlt, setPhoneAlt] = useState('')
+  const [email, setEmail] = useState('')
   const [tieneDebito, setTieneDebito] = useState(false)
   const [esSocio, setEsSocio] = useState(true)
   const [esDeportista, setEsDeportista] = useState(false)
@@ -155,6 +156,7 @@ function PersonasPage() {
     setAddressCobro('')
     setPhone('')
     setPhoneAlt('')
+    setEmail('')
     setTieneDebito(false)
     setEsSocio(true)
     setEsDeportista(false)
@@ -203,6 +205,7 @@ function PersonasPage() {
     setAddressCobro(p.addressCobro || '')
     setPhone(p.phone || '')
     setPhoneAlt(p.phoneAlt || '')
+    setEmail(p.email || '')
     setTieneDebito(!!p.tieneDebitoAutomatico)
     setEsSocio(!!res.membresia)
     setEsDeportista(!!res.inscripcion)
@@ -233,6 +236,7 @@ function PersonasPage() {
             addressCobro: addressCobro || undefined,
             phone: phone || undefined,
             phoneAlt: phoneAlt || undefined,
+            email: email || undefined,
             tieneDebitoAutomatico: tieneDebito,
             hacerSocio: !esSocio && hacerSocio,
             category: quiereDeporte
@@ -265,6 +269,7 @@ function PersonasPage() {
             addressCobro: addressCobro || undefined,
             phone: phone || undefined,
             phoneAlt: phoneAlt || undefined,
+            email: email || undefined,
             tieneDebitoAutomatico: tieneDebito,
             esSocio,
             esDeportista: esSocio ? esDeportista : false,
@@ -497,7 +502,9 @@ function PersonasPage() {
                   <input
                     value={documentNumber}
                     onChange={(e) =>
-                      setDocumentNumber(e.target.value.replace(/\D/g, '').slice(0, 8))
+                      setDocumentNumber(
+                        e.target.value.replace(/\D/g, '').slice(0, 8),
+                      )
                     }
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     required
@@ -586,6 +593,18 @@ function PersonasPage() {
                     placeholder="Ej. 2324123456"
                     minLength={10}
                     maxLength={13}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="opcional"
                   />
                 </div>
               </div>

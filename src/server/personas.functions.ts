@@ -68,6 +68,7 @@ export const listarPersonas = createServerFn({ method: 'GET' }).handler(
         addressCobro: people.addressCobro,
         phone: people.phone,
         phoneAlt: people.phoneAlt,
+        email: people.email,
         tieneDebitoAutomatico: people.tieneDebitoAutomatico,
         memberNumber: memberships.memberNumber,
         category: memberships.category,
@@ -202,6 +203,7 @@ export const crearPersona = createServerFn({ method: 'POST' })
       addressCobro?: string
       phone?: string
       phoneAlt?: string
+      email?: string
       tieneDebitoAutomatico?: boolean
       esSocio: boolean
       esDeportista: boolean
@@ -235,6 +237,10 @@ export const crearPersona = createServerFn({ method: 'POST' })
         error: 'Ingresá un celular válido (mínimo 10 dígitos, solo números)',
       }
     }
+        const email = data.email?.trim() || null
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false as const, error: 'Email inválido' }
+    }
 
     if (data.esSocio && data.esDeportista) {
       if (!data.disciplinaId) {
@@ -266,6 +272,7 @@ export const crearPersona = createServerFn({ method: 'POST' })
           addressCobro: data.addressCobro?.trim() || null,
           phone: data.phone?.trim() || null,
           phoneAlt: data.phoneAlt?.trim() || null,
+          email: data.email?.trim() || null,
           tieneDebitoAutomatico: data.tieneDebitoAutomatico ?? false,
           status: 'activo',
           recordSource: 'admin',
@@ -355,6 +362,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       addressCobro?: string
       phone?: string
       phoneAlt?: string
+      email?: string
       tieneDebitoAutomatico?: boolean
       hacerSocio?: boolean
       category?: 'menor' | 'cadete' | 'activo' | 'vitalicio' | null
@@ -402,6 +410,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
           addressCobro: data.addressCobro?.trim() || null,
           phone: data.phone?.trim() || null,
           phoneAlt: data.phoneAlt?.trim() || null,
+          email: data.email?.trim() || null,
           tieneDebitoAutomatico: data.tieneDebitoAutomatico ?? false,
           updatedAt: new Date(),
         })

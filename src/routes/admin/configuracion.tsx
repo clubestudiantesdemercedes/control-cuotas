@@ -19,6 +19,9 @@ function ConfiguracionPage() {
   const [importando, setImportando] = useState(false)
   const [preview, setPreview] = useState<Record<string, unknown>[] | null>(null)
   const [nombreArchivo, setNombreArchivo] = useState('')
+  const [erroresImport, setErroresImport] = useState<
+    { fila: number; mensaje: string }[]
+  >([])
 
   const cargar = async () => {
     setError('')
@@ -82,6 +85,7 @@ function ConfiguracionPage() {
     setMsg('')
     setPreview(null)
     setNombreArchivo('')
+    setErroresImport([])
     if (!file) return
     try {
       const XLSX = await import('xlsx')
@@ -110,6 +114,7 @@ function ConfiguracionPage() {
     setImportando(true)
     setError('')
     setMsg('')
+    setErroresImport([])
     try {
       const res = await importarPadron({ data: { filas: preview } })
       if (!res.ok) {
@@ -122,16 +127,10 @@ function ConfiguracionPage() {
             ? ` · ${res.errores.length} filas con error`
             : ''),
       )
+      setErroresImport(res.errores)
       if (res.errores.length) {
-        console.warn('Errores import padrón', res.errores)
         setError(
-          res.errores
-            .slice(0, 8)
-            .map((e) => `Fila ${e.fila}: ${e.mensaje}`)
-            .join(' · ') +
-            (res.errores.length > 8
-              ? ` … y ${res.errores.length - 8} más (ver consola)`
-              : ''),
+          `${res.errores.length} filas no se importaron. Revisá el listado o descargá el reporte.`,
         )
       }
       setPreview(null)
@@ -143,6 +142,22 @@ function ConfiguracionPage() {
     } finally {
       setImportando(false)
     }
+  }
+
+  const descargarErrores = async () => {
+    if (!erroresImport.length) return
+    const XLSX = await import('xlsx')
+    const rows = erroresImport.map((e) => ({
+      Fila: e.fila,
+      Motivo: e.mensaje,
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Errores')
+    XLSX.writeFile(
+      wb,
+      `errores-import-padron-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    )
   }
 
   return (
@@ -275,6 +290,43 @@ function ConfiguracionPage() {
           </div>
         )}
       </div>
+
+      {erroresImport.length > 0 && (
+        <div className="bg-white border border-amber-200 rounded-xl p-4 shadow-sm space-y-3">
+          <h3 className="font-semibold text-gray-800">
+            Reporte de errores ({erroresImport.length})
+          </h3>
+          <div className="overflow-x-auto max-h-56 border rounded text-sm">
+            <table className="w-full">
+              <thead className="bg-amber-50 sticky top-0 text-left">
+                <tr>
+                  <th className="px-3 py-2 w-20">Fila</th>
+                  <th className="px-3 py-2">Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {erroresImport.map((e, i) => (
+                  <tr key={i} className="border-t">
+                    <td className="px-3 py-1.5 font-medium">{e.fila}</td>
+                    <td className="px-3 py-1.5">{e.mensaje}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            onClick={descargarErrores}
+            className="bg-amber-600 hover:bg-amber-700 text-white text-sm px-4 py-2 rounded-lg"
+          >
+            Descargar reporte de errores (Excel)
+          </button>
+          <p className="text-xs text-gray-500">
+            La fila es la del Excel (fila 1 = encabezados). Corregí esos datos y
+            volvé a importar; las demás ya quedaron actualizadas.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

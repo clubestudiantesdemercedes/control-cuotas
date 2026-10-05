@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm'
 import { requireUser } from './auth.server'
 
 function primerDia(periodo: string) {
@@ -12,11 +12,6 @@ function diaVencimiento(periodo: string) {
   const m = periodo.match(/^(\d{4})-(\d{2})$/)
   if (!m) return null
   return `${m[1]}-${m[2]}-15`
-}
-
-function mesNumero(periodo: string) {
-  const m = periodo.match(/^(\d{4})-(\d{2})$/)
-  return m ? Number(m[2]) : 0
 }
 
 function nombreMes(periodo: string) {
@@ -38,6 +33,14 @@ function nombreMes(periodo: string) {
     'Diciembre',
   ]
   return `${nombres[Number(m[2])]} ${m[1]}`
+}
+
+function claveCuota(
+  personId: number,
+  tipo: string,
+  disciplinaId: number | null,
+) {
+  return `${personId}|${tipo}|${disciplinaId ?? 'null'}`
 }
 
 async function buscarMonto(params: {
@@ -72,85 +75,16 @@ async function buscarMonto(params: {
   return { monto: String(row.monto), tarifarioId: row.id as number }
 }
 
-export const datosParaGenerar = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    await requireUser()
-    const { db } = await import('../../db')
-    const { disciplinas, categoriasDeportivas } = await import('../../db/schema')
-
-    const discs = await db
-      .select()
-      .from(disciplinas)
-      .where(eq(disciplinas.activa, true))
-      .orderBy(asc(disciplinas.nombre))
-
-    const cats = await db
-      .select()
-      .from(categoriasDeportivas)
-      .where(eq(categoriasDeportivas.activa, true))
-      .orderBy(asc(categoriasDeportivas.nombre))
-
-    return {
-      ok: true as const,
-      disciplinas: discs,
-      categorias: cats,
-      categoriasSociales: [
-        'menor',
-        'cadete',
-        'activo',
-        'vitalicio',
-        '3_familiar',
-        '4_familiar',
-      ],
-    }
-  },
-)
-
-type PreviewItem = {
-  personId: number
-  dni: string
-  nombreCompleto: string
-  nroSocio: string | null
-  tipoCuota: 'social' | 'deportiva'
-  subcategoriaCuota: string
-  disciplinaId: number | null
-  disciplinaNombre: string | null
-  categoriaDeportivaId: number | null
-  categoriaDeportivaNombre: string | null
-  membershipId: number | null
-  monto: string
-  tarifarioId: number | null
-  estado: 'pendiente' | 'pagada'
-  concepto: string
-  yaExiste: boolean
-  beca: boolean
-}
-
-async function armarPlan(params: {
-  periodo: string
-  categoriasSociales: string[]
-  categoriasDeportivasIds: number[]
-  confirmar: boolean
-}) {
-  const { db } = await import('../../db')
+async function loadSocios(db: any, schema: any, personId?: number) {
   const {
     people,
     memberships,
     inscripcionesDeportivas,
     disciplinas,
     categoriasDeportivas,
-    tarifario,
-    cuotasGeneradas,
-    generacionesCuotas,
-  } = await import('../../db/schema')
+  } = schema
 
-  const periodo = params.periodo
-  const venc = diaVencimiento(periodo)
-  if (!venc || !primerDia(periodo)) {
-    return { ok: false as const, error: 'Período inválido (YYYY-MM)' }
-  }
-
-  const socios = await db
+  const base = db
     .select({
       personId: people.id,
       dni: people.documentNumber,
@@ -196,34 +130,86 @@ async function armarPlan(params: {
       ),
     )
 
-  const existentes = await db
-    .select({
-      personId: cuotasGeneradas.personId,
-      tipoCuota: cuotasGeneradas.tipoCuota,
-      disciplinaId: cuotasGeneradas.disciplinaId,
-      estado: cuotasGeneradas.estado,
-    })
+  if (personId != null) {
+    return base.where(eq(people.id, personId))
+  }
+  return base
+}
+
+type ItemPlan = {
+  personId: number
+  dni: string
+  nombreCompleto: string
+  nroSocio: string | null
+  tipoCuota: 'social' | 'deportiva'
+  subcategoriaCuota: string
+  disciplinaId: number | null
+  disciplinaNombre: string | null
+  categoriaDeportivaId: number | null
+  categoriaDeportivaNombre: string | null
+  membershipId: number | null
+  monto: string
+  tarifarioId: number
+  estado: 'pendiente' | 'pagada'
+  concepto: string
+  cuotaExistenteId: number | null
+}
+
+async function planificar(params: {
+  periodo: string
+  personId?: number
+  categoriasSociales?: string[]
+  categoriasDeportivasIds?: number[]
+  modoIndividual: boolean
+}) {
+  const { db } = await import('../../db')
+  const schema = await import('../../db/schema')
+  const { cuotasGeneradas, tarifario } = schema
+
+  const periodo = params.periodo
+  const venc = diaVencimiento(periodo)
+  if (!venc || !primerDia(periodo)) {
+    return { ok: false as const, error: 'Período inválido (YYYY-MM)' }
+  }
+
+  const socios = await loadSocios(db, schema, params.personId)
+  if (params.personId != null && socios.length === 0) {
+    return {
+      ok: false as const,
+      error: 'Persona sin membresía activa',
+    }
+  }
+
+  const existQuery = db
+    .select()
     .from(cuotasGeneradas)
-    .where(
-      and(
-        eq(cuotasGeneradas.periodo, periodo),
-        // no contar anuladas como bloqueo absoluto: unique incluye no anuladas normalmente
-      ),
+    .where(eq(cuotasGeneradas.periodo, periodo))
+
+  const existentes = params.personId
+    ? await db
+        .select()
+        .from(cuotasGeneradas)
+        .where(
+          and(
+            eq(cuotasGeneradas.periodo, periodo),
+            eq(cuotasGeneradas.personId, params.personId),
+          ),
+        )
+    : await existQuery
+
+  const mapExist = new Map<string, (typeof existentes)[0]>()
+  for (const e of existentes) {
+    if (e.estado === 'anulada') continue
+    mapExist.set(
+      claveCuota(e.personId, e.tipoCuota, e.disciplinaId ?? null),
+      e,
     )
+  }
 
-  const keyExist = new Set(
-    existentes
-      .filter((e) => e.estado !== 'anulada')
-      .map(
-        (e) =>
-          `${e.personId}|${e.tipoCuota}|${e.disciplinaId ?? 'null'}`,
-      ),
-  )
-
-  const items: PreviewItem[] = []
+  const selSocial = new Set(params.categoriasSociales || [])
+  const selDep = new Set(params.categoriasDeportivasIds || [])
+  const items: ItemPlan[] = []
   const errores: string[] = []
-  const selSocial = new Set(params.categoriasSociales)
-  const selDep = new Set(params.categoriasDeportivasIds)
 
   for (const s of socios) {
     const nombreCompleto = `${s.lastName}, ${s.firstName}`
@@ -233,92 +219,54 @@ async function armarPlan(params: {
       s.disciplinaId != null &&
       s.categoriaDeportivaId != null
 
-    // --- Deportiva ---
+    let tipo: 'social' | 'deportiva'
+    let clave: string
+    let discId: number | null = null
+    let catDepId: number | null = null
+    let discNombre: string | null = null
+    let catDepNombre: string | null = null
+    let concepto: string
+
     if (tieneDeporte && !esVitalicio) {
-      if (!selDep.has(s.categoriaDeportivaId!)) {
-        // Deportista cuya categoría no se genera este mes → no social
+      if (!params.modoIndividual && !selDep.has(s.categoriaDeportivaId!)) {
         continue
       }
-
-      const claveDep =
+      tipo = 'deportiva'
+      clave =
         s.subcategoriaCuotaDeporte === '2_hermano'
           ? '2_hermano'
           : s.subcategoriaCuotaDeporte === '3_hermano'
             ? '3_hermano'
             : 'deportista_pleno'
-
-      const tarifa = await buscarMonto({
-        db,
-        tarifario,
-        tipoCuota: 'deportiva',
-        clave: claveDep,
-        periodo,
-      })
-      if (!tarifa) {
-        errores.push(
-          `${nombreCompleto}: sin tarifa deportiva ${claveDep}`,
-        )
-        continue
-      }
-
-      let monto = tarifa.monto
-      let estado: 'pendiente' | 'pagada' = 'pendiente'
-      if (s.beca || Number(monto) === 0) {
-        monto = '0'
-        estado = 'pagada'
-      }
-
-      const k = `${s.personId}|deportiva|${s.disciplinaId}`
-      items.push({
-        personId: s.personId,
-        dni: s.dni,
-        nombreCompleto,
-        nroSocio: s.memberNumber,
-        tipoCuota: 'deportiva',
-        subcategoriaCuota: claveDep,
-        disciplinaId: s.disciplinaId,
-        disciplinaNombre: s.deporte,
-        categoriaDeportivaId: s.categoriaDeportivaId,
-        categoriaDeportivaNombre: s.categoriaDeportivaNombre,
-        membershipId: s.membershipId,
-        monto,
-        tarifarioId: tarifa.tarifarioId,
-        estado,
-        concepto: `Cuota deportiva ${s.deporte} ${nombreMes(periodo)}`,
-        yaExiste: keyExist.has(k),
-        beca: !!s.beca,
-      })
-      continue
-    }
-
-    // --- Social ---
-    let claveSocial: string
-    if (esVitalicio) {
-      claveSocial = 'vitalicio'
-    } else if (
-      s.subcategoriaCuota === '3_familiar' ||
-      s.subcategoriaCuota === '4_familiar'
-    ) {
-      claveSocial = s.subcategoriaCuota
+      discId = s.disciplinaId
+      catDepId = s.categoriaDeportivaId
+      discNombre = s.deporte
+      catDepNombre = s.categoriaDeportivaNombre
+      concepto = `Cuota deportiva ${s.deporte} ${nombreMes(periodo)}`
     } else {
-      claveSocial = s.category || 'activo'
+      if (esVitalicio) clave = 'vitalicio'
+      else if (
+        s.subcategoriaCuota === '3_familiar' ||
+        s.subcategoriaCuota === '4_familiar'
+      ) {
+        clave = s.subcategoriaCuota
+      } else {
+        clave = s.category || 'activo'
+      }
+      if (!params.modoIndividual && !selSocial.has(clave)) continue
+      tipo = 'social'
+      concepto = `Cuota social ${nombreMes(periodo)}`
     }
-
-    if (!selSocial.has(claveSocial) && !selSocial.has(s.category || '')) {
-      // permitir tildar menor/cadete/activo o 3_familiar
-      if (!selSocial.has(claveSocial)) continue
-    }
-    if (!selSocial.has(claveSocial)) continue
 
     const tarifa = await buscarMonto({
       db,
       tarifario,
-      tipoCuota: 'social',
-      clave: claveSocial,
+      tipoCuota: tipo,
+      clave,
       periodo,
     })
     if (!tarifa) {
-      errores.push(`${nombreCompleto}: sin tarifa social ${claveSocial}`)
+      errores.push(`${nombreCompleto}: sin tarifa ${tipo}/${clave}`)
       continue
     }
 
@@ -329,124 +277,60 @@ async function armarPlan(params: {
       estado = 'pagada'
     }
 
-    const k = `${s.personId}|social|null`
+    const k = claveCuota(s.personId, tipo, discId)
+    const prev = mapExist.get(k)
+
     items.push({
       personId: s.personId,
       dni: s.dni,
       nombreCompleto,
       nroSocio: s.memberNumber,
-      tipoCuota: 'social',
-      subcategoriaCuota: claveSocial,
-      disciplinaId: null,
-      disciplinaNombre: null,
-      categoriaDeportivaId: null,
-      categoriaDeportivaNombre: null,
+      tipoCuota: tipo,
+      subcategoriaCuota: clave,
+      disciplinaId: discId,
+      disciplinaNombre: discNombre,
+      categoriaDeportivaId: catDepId,
+      categoriaDeportivaNombre: catDepNombre,
       membershipId: s.membershipId,
       monto,
       tarifarioId: tarifa.tarifarioId,
       estado,
-      concepto: `Cuota social ${nombreMes(periodo)}`,
-      yaExiste: keyExist.has(k),
-      beca: !!s.beca,
+      concepto,
+      cuotaExistenteId:
+        prev && prev.estado === 'pendiente' ? prev.id : null,
     })
-  }
-
-  const aGenerar = items.filter((i) => !i.yaExiste)
-  const omitidas = items.filter((i) => i.yaExiste)
-
-  const resumenMap = new Map<
-    string,
-    { label: string; personas: number; total: number }
-  >()
-  for (const i of aGenerar) {
-    const label =
-      i.tipoCuota === 'deportiva'
-        ? `${i.disciplinaNombre} · ${i.categoriaDeportivaNombre} · ${i.subcategoriaCuota}`
-        : `Social · ${i.subcategoriaCuota}`
-    const prev = resumenMap.get(label) || {
-      label,
-      personas: 0,
-      total: 0,
-    }
-    prev.personas += 1
-    prev.total += Number(i.monto)
-    resumenMap.set(label, prev)
-  }
-
-  const resumen = [...resumenMap.values()]
-  const totalMonto = aGenerar.reduce((acc, i) => acc + Number(i.monto), 0)
-
-  if (params.confirmar) {
-    let creadas = 0
-    for (const i of aGenerar) {
-      try {
-        await db.insert(cuotasGeneradas).values({
-          personId: i.personId,
-          membershipId: i.membershipId,
-          tipoCuota: i.tipoCuota,
-          disciplinaId: i.disciplinaId,
-          categoriaDeportivaId: i.categoriaDeportivaId,
-          periodo,
-          concepto: i.concepto,
-          montoOriginal: i.monto,
-          montoFinal: i.monto,
-          fechaVencimiento: venc,
-          estado: i.estado,
-          dni: i.dni,
-          nombreCompleto: i.nombreCompleto,
-          nroSocio: i.nroSocio,
-          subcategoriaCuota: i.subcategoriaCuota,
-          disciplinaNombre: i.disciplinaNombre,
-          categoriaDeportivaNombre: i.categoriaDeportivaNombre,
-          tarifarioId: i.tarifarioId,
-        })
-        creadas++
-      } catch (err: any) {
-        if (
-          String(err?.message || err).includes('unique') ||
-          String(err).includes('duplicate')
-        ) {
-          // ya existía
-        } else {
-          console.error(err)
-          errores.push(`${i.nombreCompleto}: error al insertar`)
-        }
-      }
-    }
-
-    await db.insert(generacionesCuotas).values({
-      periodo,
-      cantidadPersonas: aGenerar.length,
-      cantidadCuotas: creadas,
-      cantidadErrores: errores.length,
-      modo: 'masiva',
-      log: { resumen, omitidas: omitidas.length, errores },
-    })
-
-    return {
-      ok: true as const,
-      modo: 'confirmado' as const,
-      periodo,
-      creadas,
-      omitidas: omitidas.length,
-      errores,
-      resumen,
-      totalMonto,
-    }
   }
 
   return {
     ok: true as const,
-    modo: 'preview' as const,
     periodo,
-    items: aGenerar.slice(0, 50),
-    totalAGenerar: aGenerar.length,
-    omitidas: omitidas.length,
+    vencimiento: venc,
+    items,
     errores,
-    resumen,
-    totalMonto,
   }
 }
+
+export const datosParaGenerar = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    await requireUser()
+    const { db } = await import('../../db')
+    const { disciplinas, categoriasDeportivas } = await import('../../db/schema')
+
+    const discs = await db
+      .select()
+      .from(disciplinas)
+      .where(eq(disciplinas.activa, true))
+      .orderBy(asc(disciplinas.nombre))
+
+    const cats = await db
+      .select()
+      .from(categoriasDeportivas)
+      .where(eq(categoriasDeportivas.activa, true))
+      .orderBy(asc(categoriasDeportivas.nombre))
+
+    return { ok: true as const, disciplinas: discs, categorias: cats }
+  },
+)
 
 export const previsualizarGeneracion = createServerFn({ method: 'POST' })
   .inputValidator(
@@ -458,7 +342,46 @@ export const previsualizarGeneracion = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     await requireUser()
-    return armarPlan({ ...data, confirmar: false })
+    const plan = await planificar({
+      periodo: data.periodo,
+      categoriasSociales: data.categoriasSociales,
+      categoriasDeportivasIds: data.categoriasDeportivasIds,
+      modoIndividual: false,
+    })
+    if (!plan.ok) return plan
+
+    const aGenerar = plan.items.filter((i) => i.cuotaExistenteId == null)
+    const omitidas = plan.items.filter((i) => i.cuotaExistenteId != null)
+
+    const resumenMap = new Map<
+      string,
+      { label: string; personas: number; total: number }
+    >()
+    for (const i of aGenerar) {
+      const label =
+        i.tipoCuota === 'deportiva'
+          ? `${i.disciplinaNombre} · ${i.categoriaDeportivaNombre} · ${i.subcategoriaCuota}`
+          : `Social · ${i.subcategoriaCuota}`
+      const prev = resumenMap.get(label) || {
+        label,
+        personas: 0,
+        total: 0,
+      }
+      prev.personas += 1
+      prev.total += Number(i.monto)
+      resumenMap.set(label, prev)
+    }
+
+    return {
+      ok: true as const,
+      modo: 'preview' as const,
+      periodo: plan.periodo,
+      totalAGenerar: aGenerar.length,
+      omitidas: omitidas.length,
+      totalMonto: aGenerar.reduce((a, i) => a + Number(i.monto), 0),
+      resumen: [...resumenMap.values()],
+      errores: plan.errores,
+    }
   })
 
 export const confirmarGeneracion = createServerFn({ method: 'POST' })
@@ -471,5 +394,257 @@ export const confirmarGeneracion = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     await requireUser()
-    return armarPlan({ ...data, confirmar: true })
+    const { db } = await import('../../db')
+    const { cuotasGeneradas, generacionesCuotas } = await import(
+      '../../db/schema'
+    )
+
+    const plan = await planificar({
+      periodo: data.periodo,
+      categoriasSociales: data.categoriasSociales,
+      categoriasDeportivasIds: data.categoriasDeportivasIds,
+      modoIndividual: false,
+    })
+    if (!plan.ok) return plan
+
+    let creadas = 0
+    let omitidas = 0
+    const errores = [...plan.errores]
+    let totalMonto = 0
+
+    for (const i of plan.items) {
+      if (i.cuotaExistenteId != null) {
+        omitidas++
+        continue
+      }
+      try {
+        await db.insert(cuotasGeneradas).values({
+          personId: i.personId,
+          membershipId: i.membershipId,
+          tipoCuota: i.tipoCuota,
+          disciplinaId: i.disciplinaId,
+          categoriaDeportivaId: i.categoriaDeportivaId,
+          periodo: plan.periodo,
+          concepto: i.concepto,
+          montoOriginal: i.monto,
+          montoFinal: i.monto,
+          fechaVencimiento: plan.vencimiento,
+          estado: i.estado,
+          dni: i.dni,
+          nombreCompleto: i.nombreCompleto,
+          nroSocio: i.nroSocio,
+          subcategoriaCuota: i.subcategoriaCuota,
+          disciplinaNombre: i.disciplinaNombre,
+          categoriaDeportivaNombre: i.categoriaDeportivaNombre,
+          tarifarioId: i.tarifarioId,
+        })
+        creadas++
+        totalMonto += Number(i.monto)
+      } catch (err: any) {
+        const msg = String(err?.message || err)
+        if (msg.includes('unique') || msg.includes('duplicate')) {
+          omitidas++
+        } else {
+          console.error(err)
+          errores.push(`${i.nombreCompleto}: error al insertar`)
+        }
+      }
+    }
+
+    await db.insert(generacionesCuotas).values({
+      periodo: plan.periodo,
+      cantidadPersonas: creadas,
+      cantidadCuotas: creadas,
+      cantidadErrores: errores.length,
+      modo: 'masiva',
+      log: { omitidas, errores },
+    })
+
+    return {
+      ok: true as const,
+      modo: 'confirmado' as const,
+      periodo: plan.periodo,
+      creadas,
+      omitidas,
+      errores,
+      totalMonto,
+    }
+  })
+
+export const previsualizarGeneracionIndividual = createServerFn({
+  method: 'POST',
+})
+  .inputValidator(
+    (data: {
+      periodo: string
+      busqueda: string
+      tipo: 'dni' | 'socio'
+      reemplazarSiExiste?: boolean
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    await requireUser()
+    const { db } = await import('../../db')
+    const { people, memberships } = await import('../../db/schema')
+
+    const valor = data.busqueda.trim()
+    if (!valor) {
+      return { ok: false as const, error: 'Ingresá DNI o n° socio' }
+    }
+
+    let personId: number | null = null
+
+    if (data.tipo === 'dni') {
+      const dni = valor.replace(/\D/g, '') || valor
+      const [p] = await db
+        .select()
+        .from(people)
+        .where(eq(people.documentNumber, dni))
+        .limit(1)
+      personId = p?.id ?? null
+    } else {
+      const [m] = await db
+        .select()
+        .from(memberships)
+        .where(
+          and(
+            eq(memberships.memberNumber, valor),
+            eq(memberships.status, 'activo'),
+            isNull(memberships.endDate),
+          ),
+        )
+        .limit(1)
+      personId = m?.personId ?? null
+    }
+
+    if (!personId) {
+      return { ok: false as const, error: 'Persona no encontrada' }
+    }
+
+    const plan = await planificar({
+      periodo: data.periodo,
+      personId,
+      modoIndividual: true,
+    })
+    if (!plan.ok) return plan
+
+    const aReemplazar = plan.items.filter((i) => i.cuotaExistenteId != null)
+
+    return {
+      ok: true as const,
+      modo: 'preview_individual' as const,
+      periodo: plan.periodo,
+      personId,
+      items: plan.items,
+      aReemplazar: aReemplazar.length,
+      errores: plan.errores,
+      totalMonto: plan.items.reduce((a, i) => a + Number(i.monto), 0),
+    }
+  })
+
+export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (data: {
+      periodo: string
+      personId: number
+      reemplazarSiExiste: boolean
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    await requireUser()
+    const { db } = await import('../../db')
+    const { cuotasGeneradas, generacionesCuotas } = await import(
+      '../../db/schema'
+    )
+
+    const plan = await planificar({
+      periodo: data.periodo,
+      personId: data.personId,
+      modoIndividual: true,
+    })
+    if (!plan.ok) return plan
+
+    let anuladas = 0
+    let creadas = 0
+    const errores = [...plan.errores]
+
+    for (const i of plan.items) {
+      if (i.cuotaExistenteId) {
+        if (!data.reemplazarSiExiste) {
+          errores.push(
+            `${i.nombreCompleto}: ya tiene cuota pendiente (no se reemplazó)`,
+          )
+          continue
+        }
+
+        const [exist] = await db
+          .select()
+          .from(cuotasGeneradas)
+          .where(eq(cuotasGeneradas.id, i.cuotaExistenteId))
+          .limit(1)
+
+        if (exist?.estado === 'pagada' && Number(exist.montoFinal) > 0) {
+          errores.push(
+            `${i.nombreCompleto}: cuota pagada, no se puede reemplazar`,
+          )
+          continue
+        }
+
+        await db
+          .update(cuotasGeneradas)
+          .set({
+            estado: 'anulada',
+            concepto:
+              `${exist?.concepto || i.concepto} · ANULADA: reemplazo generación individual`.slice(
+                0,
+                500,
+              ),
+          })
+          .where(eq(cuotasGeneradas.id, i.cuotaExistenteId))
+        anuladas++
+      }
+
+      try {
+        await db.insert(cuotasGeneradas).values({
+          personId: i.personId,
+          membershipId: i.membershipId,
+          tipoCuota: i.tipoCuota,
+          disciplinaId: i.disciplinaId,
+          categoriaDeportivaId: i.categoriaDeportivaId,
+          periodo: plan.periodo,
+          concepto: i.concepto,
+          montoOriginal: i.monto,
+          montoFinal: i.monto,
+          fechaVencimiento: plan.vencimiento,
+          estado: i.estado,
+          dni: i.dni,
+          nombreCompleto: i.nombreCompleto,
+          nroSocio: i.nroSocio,
+          subcategoriaCuota: i.subcategoriaCuota,
+          disciplinaNombre: i.disciplinaNombre,
+          categoriaDeportivaNombre: i.categoriaDeportivaNombre,
+          tarifarioId: i.tarifarioId,
+        })
+        creadas++
+      } catch (err: any) {
+        console.error(err)
+        errores.push(`${i.nombreCompleto}: error al insertar`)
+      }
+    }
+
+    await db.insert(generacionesCuotas).values({
+      periodo: plan.periodo,
+      cantidadPersonas: 1,
+      cantidadCuotas: creadas,
+      cantidadErrores: errores.length,
+      modo: 'individual',
+      log: { anuladas, personId: data.personId, errores },
+    })
+
+    return {
+      ok: true as const,
+      creadas,
+      anuladas,
+      errores,
+    }
   })

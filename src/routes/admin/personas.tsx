@@ -35,11 +35,18 @@ function PersonasPage() {
   const [phoneAlt, setPhoneAlt] = useState('')
   const [email, setEmail] = useState('')
   const [tieneDebito, setTieneDebito] = useState(false)
+  const [beca, setBeca] = useState(false)
   const [esSocio, setEsSocio] = useState(true)
   const [esDeportista, setEsDeportista] = useState(false)
   const [category, setCategory] = useState<
     'menor' | 'cadete' | 'activo' | 'vitalicio'
   >('activo')
+  const [subcategoriaCuota, setSubcategoriaCuota] = useState<
+    'pleno' | '3_familiar' | '4_familiar'
+  >('pleno')
+  const [subcategoriaCuotaDeporte, setSubcategoriaCuotaDeporte] = useState<
+    'pleno' | '2_hermano' | '3_hermano'
+  >('pleno')
   const [disciplinaId, setDisciplinaId] = useState<number | ''>('')
   const [memberNumberShow, setMemberNumberShow] = useState('')
 
@@ -96,6 +103,18 @@ function PersonasPage() {
   function formatFechaAR(valor: unknown) {
     if (!valor) return '—'
     return String(valor).slice(0, 10).split('-').reverse().join('/')
+  }
+
+  function labelSubSocial(v: string | null | undefined) {
+    if (v === '3_familiar') return '3.º familiar'
+    if (v === '4_familiar') return '4.º familiar o superior'
+    return 'Pleno'
+  }
+
+  function labelSubDeporte(v: string | null | undefined) {
+    if (v === '2_hermano') return '2.º hermano'
+    if (v === '3_hermano') return '3.º hermano'
+    return 'Deportista pleno'
   }
 
   useEffect(() => {
@@ -183,9 +202,12 @@ function PersonasPage() {
     setPhoneAlt('')
     setEmail('')
     setTieneDebito(false)
+    setBeca(false)
     setEsSocio(true)
     setEsDeportista(false)
     setCategory('activo')
+    setSubcategoriaCuota('pleno')
+    setSubcategoriaCuotaDeporte('pleno')
     setDisciplinaId('')
     setMemberNumberShow('')
     setHacerSocio(false)
@@ -233,9 +255,16 @@ function PersonasPage() {
     setPhoneAlt(p.phoneAlt || '')
     setEmail(p.email || '')
     setTieneDebito(!!p.tieneDebitoAutomatico)
+    setBeca(!!p.beca)
     setEsSocio(!!res.membresia)
     setEsDeportista(!!res.inscripcion)
     setCategory((res.membresia?.category as any) || 'activo')
+    setSubcategoriaCuota(
+      (res.membresia?.subcategoriaCuota as any) || 'pleno',
+    )
+    setSubcategoriaCuotaDeporte(
+      (res.inscripcion?.subcategoriaCuota as any) || 'pleno',
+    )
     setMemberNumberShow(res.membresia?.memberNumber || '')
     setDisciplinaId(res.inscripcion?.disciplinaId || '')
     setShowForm(true)
@@ -302,12 +331,21 @@ function PersonasPage() {
             phoneAlt: phoneAlt || undefined,
             email: email || undefined,
             tieneDebitoAutomatico: tieneDebito,
+            beca,
             hacerSocio: !esSocio && hacerSocio,
             category: quiereDeporte
               ? null
               : esSocio || hacerSocio
                 ? category
                 : null,
+            subcategoriaCuota: quiereDeporte
+              ? 'pleno'
+              : esSocio || hacerSocio
+                ? subcategoriaCuota
+                : null,
+            subcategoriaCuotaDeporte: quiereDeporte
+              ? subcategoriaCuotaDeporte
+              : null,
             agregarOCambiarDeporte: quiereDeporte,
             quitarDeporte: esDeportista && quitarDeporte,
             disciplinaId:
@@ -335,9 +373,14 @@ function PersonasPage() {
             phoneAlt: phoneAlt || undefined,
             email: email || undefined,
             tieneDebitoAutomatico: tieneDebito,
+            beca,
             esSocio,
             esDeportista: esSocio ? esDeportista : false,
             category: esSocio && !esDeportista ? category : undefined,
+            subcategoriaCuota:
+              esSocio && !esDeportista ? subcategoriaCuota : undefined,
+            subcategoriaCuotaDeporte:
+              esSocio && esDeportista ? subcategoriaCuotaDeporte : undefined,
             disciplinaId:
               esSocio && esDeportista && disciplinaId !== ''
                 ? Number(disciplinaId)
@@ -443,6 +486,27 @@ function PersonasPage() {
     )
   }
 
+  const selectSubSocial = (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">
+        Subcategoría de cuota
+      </label>
+      <select
+        value={subcategoriaCuota}
+        onChange={(e) =>
+          setSubcategoriaCuota(
+            e.target.value as 'pleno' | '3_familiar' | '4_familiar',
+          )
+        }
+        className="w-full border rounded-lg px-3 py-2 text-sm"
+      >
+        <option value="pleno">Pleno (valor normal)</option>
+        <option value="3_familiar">3.º familiar</option>
+        <option value="4_familiar">4.º familiar o superior</option>
+      </select>
+    </div>
+  )
+
   const bloqueDeporteUI = (
     <div className="space-y-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
       <p className="text-xs text-blue-800">
@@ -502,6 +566,24 @@ function PersonasPage() {
             {categoriaError}
           </div>
         )}
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Subcategoría cuota deportiva
+        </label>
+        <select
+          value={subcategoriaCuotaDeporte}
+          onChange={(e) =>
+            setSubcategoriaCuotaDeporte(
+              e.target.value as 'pleno' | '2_hermano' | '3_hermano',
+            )
+          }
+          className="w-full border rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="pleno">Deportista pleno</option>
+          <option value="2_hermano">2.º hermano</option>
+          <option value="3_hermano">3.º hermano</option>
+        </select>
       </div>
     </div>
   )
@@ -608,6 +690,9 @@ function PersonasPage() {
                       ) : (
                         <span className="text-gray-400">No socio</span>
                       )}
+                      {p.beca ? (
+                        <span className="ml-1 text-xs text-amber-700">· beca</span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">
                       {p.deporte
@@ -645,6 +730,7 @@ function PersonasPage() {
               </button>
             </div>
             <div className="p-4 space-y-3 text-sm">
+              {detalleLoading && <p className="text-gray-500">Cargando...</p>}
               {!detalleLoading && detalle && (
                 <>
                   <div>
@@ -665,19 +751,19 @@ function PersonasPage() {
                     </p>
                     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                       <div>
-                        <dt className="text-xs text-gray-500">Fecha de nacimiento</dt>
+                        <dt className="text-xs text-gray-500">Nacimiento</dt>
                         <dd>{formatFechaAR(detalle.persona.birthDate)}</dd>
                       </div>
                       <div>
-                        <dt className="text-xs text-gray-500">Estado ficha</dt>
-                        <dd>{detalle.persona.status ?? '—'}</dd>
+                        <dt className="text-xs text-gray-500">Beca</dt>
+                        <dd>{detalle.persona.beca ? 'Sí (cuota $0)' : 'No'}</dd>
                       </div>
                       <div className="sm:col-span-2">
                         <dt className="text-xs text-gray-500">Domicilio</dt>
                         <dd>{detalle.persona.address || '—'}</dd>
                       </div>
                       <div className="sm:col-span-2">
-                        <dt className="text-xs text-gray-500">Domicilio de cobro</dt>
+                        <dt className="text-xs text-gray-500">Domicilio cobro</dt>
                         <dd>
                           {detalle.persona.addressCobro ||
                             detalle.persona.address ||
@@ -689,7 +775,7 @@ function PersonasPage() {
                         <dd>{detalle.persona.phoneAlt || '—'}</dd>
                       </div>
                       <div>
-                        <dt className="text-xs text-gray-500">Teléfono fijo</dt>
+                        <dt className="text-xs text-gray-500">Tel. fijo</dt>
                         <dd>{detalle.persona.phone || '—'}</dd>
                       </div>
                       <div className="sm:col-span-2">
@@ -722,8 +808,12 @@ function PersonasPage() {
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-xs text-gray-500">Estado membresía</dt>
-                          <dd>{detalle.membresia.status ?? '—'}</dd>
+                          <dt className="text-xs text-gray-500">
+                            Subcategoría cuota
+                          </dt>
+                          <dd>
+                            {labelSubSocial(detalle.membresia.subcategoriaCuota)}
+                          </dd>
                         </div>
                         <div>
                           <dt className="text-xs text-gray-500">Alta desde</dt>
@@ -753,9 +843,21 @@ function PersonasPage() {
                             {detalle.inscripcion.categoriaDeportiva ?? '—'}
                           </dd>
                         </div>
+                        <div className="sm:col-span-2">
+                          <dt className="text-xs text-gray-500">
+                            Subcategoría cuota deportiva
+                          </dt>
+                          <dd>
+                            {labelSubDeporte(
+                              detalle.inscripcion.subcategoriaCuota,
+                            )}
+                          </dd>
+                        </div>
                       </dl>
                     ) : (
-                      <p className="text-gray-600">Sin inscripción deportiva activa.</p>
+                      <p className="text-gray-600">
+                        Sin inscripción deportiva activa.
+                      </p>
                     )}
                   </div>
 
@@ -946,6 +1048,15 @@ function PersonasPage() {
                 Débito automático (descuento)
               </label>
 
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={beca}
+                  onChange={(e) => setBeca(e.target.checked)}
+                />
+                Beca (cuota generada en $0)
+              </label>
+
               {editId == null && (
                 <div className="border-t pt-3 space-y-2">
                   <label className="flex items-center gap-2 text-sm">
@@ -972,30 +1083,34 @@ function PersonasPage() {
                       </label>
 
                       {!esDeportista && (
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Categoría social
-                          </label>
-                          <select
-                            value={category}
-                            onChange={(e) =>
-                              setCategory(
-                                e.target.value as
-                                  | 'menor'
-                                  | 'cadete'
-                                  | 'activo'
-                                  | 'vitalicio',
-                              )
-                            }
-                            className="w-full border rounded-lg px-3 py-2 text-sm"
-                            required
-                          >
-                            <option value="menor">Menor</option>
-                            <option value="cadete">Cadete</option>
-                            <option value="activo">Activo</option>
-                            <option value="vitalicio">Vitalicio</option>
-                          </select>
-                        </div>
+                        <>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Categoría social
+                            </label>
+                            <select
+                              value={category}
+                              onChange={(e) =>
+                                setCategory(
+                                  e.target.value as
+                                    | 'menor'
+                                    | 'cadete'
+                                    | 'activo'
+                                    | 'vitalicio',
+                                )
+                              }
+                              className="w-full border rounded-lg px-3 py-2 text-sm"
+                              required
+                            >
+                              <option value="menor">Menor</option>
+                              <option value="cadete">Cadete</option>
+                              <option value="activo">Activo</option>
+                              <option value="vitalicio">Vitalicio</option>
+                            </select>
+                          </div>
+                          {(category === 'cadete' || category === 'activo') &&
+                            selectSubSocial}
+                        </>
                       )}
 
                       {esDeportista && (
@@ -1029,29 +1144,33 @@ function PersonasPage() {
                   {(esSocio || hacerSocio) &&
                     !esDeportista &&
                     !agregarDeporte && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                          Categoría social
-                        </label>
-                        <select
-                          value={category}
-                          onChange={(e) =>
-                            setCategory(
-                              e.target.value as
-                                | 'menor'
-                                | 'cadete'
-                                | 'activo'
-                                | 'vitalicio',
-                            )
-                          }
-                          className="w-full border rounded-lg px-3 py-2 text-sm"
-                        >
-                          <option value="menor">Menor</option>
-                          <option value="cadete">Cadete</option>
-                          <option value="activo">Activo</option>
-                          <option value="vitalicio">Vitalicio</option>
-                        </select>
-                      </div>
+                      <>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Categoría social
+                          </label>
+                          <select
+                            value={category}
+                            onChange={(e) =>
+                              setCategory(
+                                e.target.value as
+                                  | 'menor'
+                                  | 'cadete'
+                                  | 'activo'
+                                  | 'vitalicio',
+                              )
+                            }
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                          >
+                            <option value="menor">Menor</option>
+                            <option value="cadete">Cadete</option>
+                            <option value="activo">Activo</option>
+                            <option value="vitalicio">Vitalicio</option>
+                          </select>
+                        </div>
+                        {(category === 'cadete' || category === 'activo') &&
+                          selectSubSocial}
+                      </>
                     )}
 
                   {esSocio && esDeportista && (

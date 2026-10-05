@@ -70,12 +70,15 @@ export const listarPersonas = createServerFn({ method: 'GET' }).handler(
         phoneAlt: people.phoneAlt,
         email: people.email,
         tieneDebitoAutomatico: people.tieneDebitoAutomatico,
+        beca: people.beca,
         memberNumber: memberships.memberNumber,
         category: memberships.category,
+        subcategoriaCuota: memberships.subcategoriaCuota,
         membershipStatus: memberships.status,
         membershipId: memberships.id,
         deporte: disciplinas.nombre,
         categoriaDeportiva: categoriasDeportivas.nombre,
+        subcategoriaCuotaDeporte: inscripcionesDeportivas.subcategoriaCuota,
       })
       .from(people)
       .leftJoin(
@@ -143,6 +146,7 @@ export const getPersona = createServerFn({ method: 'GET' })
         id: inscripcionesDeportivas.id,
         disciplinaId: inscripcionesDeportivas.disciplinaId,
         categoriaDeportivaId: inscripcionesDeportivas.categoriaDeportivaId,
+        subcategoriaCuota: inscripcionesDeportivas.subcategoriaCuota,
         deporte: disciplinas.nombre,
         categoriaDeportiva: categoriasDeportivas.nombre,
       })
@@ -205,9 +209,12 @@ export const crearPersona = createServerFn({ method: 'POST' })
       phoneAlt?: string
       email?: string
       tieneDebitoAutomatico?: boolean
+      beca?: boolean
       esSocio: boolean
       esDeportista: boolean
       category?: 'menor' | 'cadete' | 'activo' | 'vitalicio'
+      subcategoriaCuota?: 'pleno' | '3_familiar' | '4_familiar'
+      subcategoriaCuotaDeporte?: 'pleno' | '2_hermano' | '3_hermano'
       disciplinaId?: number
     }) => data,
   )
@@ -218,14 +225,20 @@ export const crearPersona = createServerFn({ method: 'POST' })
     const firstName = data.firstName.trim()
     const lastName = data.lastName.trim()
 
-        if (!documentNumber || documentNumber.length < 7) {
-      return { ok: false as const, error: 'Ingresá un DNI válido (7 u 8 dígitos)' }
+    if (!documentNumber || documentNumber.length < 7) {
+      return {
+        ok: false as const,
+        error: 'Ingresá un DNI válido (7 u 8 dígitos)',
+      }
     }
     if (!firstName || !lastName) {
       return { ok: false as const, error: 'Completá nombre y apellido' }
     }
     if (!data.birthDate) {
-      return { ok: false as const, error: 'La fecha de nacimiento es obligatoria' }
+      return {
+        ok: false as const,
+        error: 'La fecha de nacimiento es obligatoria',
+      }
     }
     if (!data.address?.trim()) {
       return { ok: false as const, error: 'El domicilio es obligatorio' }
@@ -237,7 +250,7 @@ export const crearPersona = createServerFn({ method: 'POST' })
         error: 'Ingresá un celular válido (mínimo 10 dígitos, solo números)',
       }
     }
-        const email = data.email?.trim() || null
+    const email = data.email?.trim() || null
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return { ok: false as const, error: 'Email inválido' }
     }
@@ -272,8 +285,9 @@ export const crearPersona = createServerFn({ method: 'POST' })
           addressCobro: data.addressCobro?.trim() || null,
           phone: data.phone?.trim() || null,
           phoneAlt: data.phoneAlt?.trim() || null,
-          email: data.email?.trim() || null,
+          email,
           tieneDebitoAutomatico: data.tieneDebitoAutomatico ?? false,
+          beca: data.beca ?? false,
           status: 'activo',
           recordSource: 'admin',
         })
@@ -286,15 +300,19 @@ export const crearPersona = createServerFn({ method: 'POST' })
       const startDate = new Date().toISOString().slice(0, 10)
       const memberNumber = await obtenerYReservarNumeroSocio()
 
-      // Deportista: social automática por edad. No deportista: la elegida.
       const category = data.esDeportista
         ? calcularCategoriaPorEdad(data.birthDate)
         : data.category!
+
+      const subcategoriaCuota = data.esDeportista
+        ? 'pleno'
+        : data.subcategoriaCuota ?? 'pleno'
 
       await db.insert(memberships).values({
         personId: persona.id,
         memberNumber,
         category,
+        subcategoriaCuota,
         status: 'activo',
         startDate,
       })
@@ -315,12 +333,15 @@ export const crearPersona = createServerFn({ method: 'POST' })
         categoriaDeportivaId = resultadoCategoria.categoria.id
         nombreCategoriaDeportiva = resultadoCategoria.categoria.nombre
 
+        const subDep = data.subcategoriaCuotaDeporte ?? 'pleno'
+
         await db.insert(inscripcionesDeportivas).values({
           personId: persona.id,
           disciplinaId: data.disciplinaId,
           categoriaDeportivaId,
-          esHermano: false,
-          esTercerHermano: false,
+          subcategoriaCuota: subDep,
+          esHermano: subDep !== 'pleno',
+          esTercerHermano: subDep === '3_hermano',
           esSegundoDeporte: false,
           fechaInicio: startDate,
           activa: true,
@@ -364,8 +385,11 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       phoneAlt?: string
       email?: string
       tieneDebitoAutomatico?: boolean
+      beca?: boolean
       hacerSocio?: boolean
       category?: 'menor' | 'cadete' | 'activo' | 'vitalicio' | null
+      subcategoriaCuota?: 'pleno' | '3_familiar' | '4_familiar' | null
+      subcategoriaCuotaDeporte?: 'pleno' | '2_hermano' | '3_hermano' | null
       agregarOCambiarDeporte?: boolean
       quitarDeporte?: boolean
       disciplinaId?: number
@@ -378,14 +402,20 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
     const firstName = data.firstName.trim()
     const lastName = data.lastName.trim()
 
-        if (!documentNumber || documentNumber.length < 7) {
-      return { ok: false as const, error: 'Ingresá un DNI válido (7 u 8 dígitos)' }
+    if (!documentNumber || documentNumber.length < 7) {
+      return {
+        ok: false as const,
+        error: 'Ingresá un DNI válido (7 u 8 dígitos)',
+      }
     }
     if (!firstName || !lastName) {
       return { ok: false as const, error: 'Completá nombre y apellido' }
     }
     if (!data.birthDate) {
-      return { ok: false as const, error: 'La fecha de nacimiento es obligatoria' }
+      return {
+        ok: false as const,
+        error: 'La fecha de nacimiento es obligatoria',
+      }
     }
     if (!data.address?.trim()) {
       return { ok: false as const, error: 'El domicilio es obligatorio' }
@@ -396,6 +426,10 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
         ok: false as const,
         error: 'Ingresá un celular válido (mínimo 10 dígitos, solo números)',
       }
+    }
+    const email = data.email?.trim() || null
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false as const, error: 'Email inválido' }
     }
 
     try {
@@ -410,8 +444,9 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
           addressCobro: data.addressCobro?.trim() || null,
           phone: data.phone?.trim() || null,
           phoneAlt: data.phoneAlt?.trim() || null,
-          email: data.email?.trim() || null,
+          email,
           tieneDebitoAutomatico: data.tieneDebitoAutomatico ?? false,
+          beca: data.beca ?? false,
           updatedAt: new Date(),
         })
         .where(eq(people.id, data.id))
@@ -433,10 +468,8 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
         data.agregarOCambiarDeporte && data.disciplinaId && !data.quitarDeporte,
       )
 
-      // No socio -> socio
       if (!mem && data.hacerSocio) {
         const memberNumber = await obtenerYReservarNumeroSocio()
-        // Si además es deportista, social por edad; si no, la elegida o por edad
         const category = seraDeportista
           ? calcularCategoriaPorEdad(data.birthDate)
           : data.category || calcularCategoriaPorEdad(data.birthDate)
@@ -445,25 +478,38 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
           personId: data.id,
           memberNumber,
           category,
+          subcategoriaCuota: seraDeportista
+            ? 'pleno'
+            : data.subcategoriaCuota ?? 'pleno',
           status: 'activo',
           startDate,
         })
       }
 
-      // Ya socio: actualizar categoría social
       if (mem) {
         if (seraDeportista && mem.category !== 'vitalicio') {
-          // Deportista: siempre recalcular social por edad (no pisa vitalicio)
           const catSocial = calcularCategoriaPorEdad(data.birthDate)
           await db
             .update(memberships)
-            .set({ category: catSocial, updatedAt: new Date() })
+            .set({
+              category: catSocial,
+              subcategoriaCuota: 'pleno',
+              updatedAt: new Date(),
+            })
             .where(eq(memberships.id, mem.id))
-        } else if (data.category && !seraDeportista) {
-          // No deportista: respeta la categoría elegida en el formulario
+        } else if (!seraDeportista) {
+          const patch: {
+            category?: string
+            subcategoriaCuota?: string
+            updatedAt: Date
+          } = { updatedAt: new Date() }
+          if (data.category) patch.category = data.category
+          if (data.subcategoriaCuota) {
+            patch.subcategoriaCuota = data.subcategoriaCuota
+          }
           await db
             .update(memberships)
-            .set({ category: data.category, updatedAt: new Date() })
+            .set(patch)
             .where(eq(memberships.id, mem.id))
         }
       }
@@ -479,7 +525,6 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
         )
         .limit(1)
 
-      // Quitar deporte
       if (insc && data.quitarDeporte) {
         await db
           .update(inscripcionesDeportivas)
@@ -487,7 +532,6 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
           .where(eq(inscripcionesDeportivas.id, insc.id))
       }
 
-      // Agregar o cambiar deporte: categoría deportiva automática
       const esSocioAhora = Boolean(mem || data.hacerSocio)
       if (esSocioAhora && seraDeportista) {
         if (!data.birthDate) {
@@ -508,6 +552,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
         }
 
         const categoriaDeportivaId = resultadoCategoria.categoria.id
+        const subDep = data.subcategoriaCuotaDeporte ?? 'pleno'
 
         if (insc && !data.quitarDeporte) {
           await db
@@ -515,6 +560,9 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
             .set({
               disciplinaId: data.disciplinaId!,
               categoriaDeportivaId,
+              subcategoriaCuota: subDep,
+              esHermano: subDep !== 'pleno',
+              esTercerHermano: subDep === '3_hermano',
             })
             .where(eq(inscripcionesDeportivas.id, insc.id))
         } else {
@@ -522,13 +570,24 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
             personId: data.id,
             disciplinaId: data.disciplinaId!,
             categoriaDeportivaId,
-            esHermano: false,
-            esTercerHermano: false,
+            subcategoriaCuota: subDep,
+            esHermano: subDep !== 'pleno',
+            esTercerHermano: subDep === '3_hermano',
             esSegundoDeporte: false,
             fechaInicio: startDate,
             activa: true,
           })
         }
+      } else if (insc && !data.quitarDeporte && data.subcategoriaCuotaDeporte) {
+        const subDep = data.subcategoriaCuotaDeporte
+        await db
+          .update(inscripcionesDeportivas)
+          .set({
+            subcategoriaCuota: subDep,
+            esHermano: subDep !== 'pleno',
+            esTercerHermano: subDep === '3_hermano',
+          })
+          .where(eq(inscripcionesDeportivas.id, insc.id))
       }
 
       return { ok: true as const }

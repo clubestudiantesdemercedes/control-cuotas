@@ -104,8 +104,8 @@ export const listarPersonas = createServerFn({ method: 'GET' }).handler(
           categoriasDeportivas.id,
         ),
       )
-      .orderBy(desc(people.id))
-      .limit(300)
+      .orderBy(asc(people.lastName), asc(people.firstName))
+      .limit(5000)
 
     return { ok: true as const, personas: rows }
   },

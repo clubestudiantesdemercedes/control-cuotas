@@ -49,7 +49,6 @@ function PersonasPage() {
     edadDeportiva?: number
     anioNacimiento?: number
   } | null>(null)
-
   const [categoriaLoading, setCategoriaLoading] = useState(false)
   const [categoriaError, setCategoriaError] = useState('')
 
@@ -57,17 +56,22 @@ function PersonasPage() {
   const [agregarDeporte, setAgregarDeporte] = useState(false)
   const [quitarDeporte, setQuitarDeporte] = useState(false)
 
+  const [busqueda, setBusqueda] = useState('')
+  const [detalleOpen, setDetalleOpen] = useState(false)
+  const [detalleLoading, setDetalleLoading] = useState(false)
+  const [detalle, setDetalle] = useState<{
+    persona: any
+    membresia: any
+    inscripcion: any
+  } | null>(null)
+
   type SortKey =
     | 'documentNumber'
     | 'memberNumber'
     | 'lastName'
     | 'firstName'
-    | 'birthDate'
-    | 'phoneAlt'
     | 'deporte'
     | 'category'
-    | 'email'
-    | 'tieneDebitoAutomatico'
 
   const [sortKey, setSortKey] = useState<SortKey>('lastName')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -79,22 +83,19 @@ function PersonasPage() {
 
   function categoriaSocialPorEdad(fecha: string): string {
     if (!fecha) return '—'
-
     const hoy = new Date()
     const nac = new Date(fecha)
-
     let edad = hoy.getFullYear() - nac.getFullYear()
-
     const m = hoy.getMonth() - nac.getMonth()
-
-    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) {
-      edad--
-    }
-
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--
     if (edad < 12) return 'menor'
     if (edad < 18) return 'cadete'
-
     return 'activo'
+  }
+
+  function formatFechaAR(valor: unknown) {
+    if (!valor) return '—'
+    return String(valor).slice(0, 10).split('-').reverse().join('/')
   }
 
   useEffect(() => {
@@ -119,14 +120,11 @@ function PersonasPage() {
             birthDate,
           },
         })
-
         if (cancelado) return
-
         if (!res.ok) {
           setCategoriaError(res.error)
           return
         }
-
         setCategoriaAutomatica({
           id: res.categoria.id,
           nombre: res.categoria.nombre,
@@ -139,14 +137,11 @@ function PersonasPage() {
           setCategoriaError('No se pudo calcular la categoría deportiva')
         }
       } finally {
-        if (!cancelado) {
-          setCategoriaLoading(false)
-        }
+        if (!cancelado) setCategoriaLoading(false)
       }
     }
 
     calcularCategoria()
-
     return () => {
       cancelado = true
     }
@@ -155,25 +150,15 @@ function PersonasPage() {
   const cargar = async () => {
     setLoading(true)
     setError('')
-
     try {
       const [resP, resD, resN] = await Promise.all([
         listarPersonas(),
         listarDeportesParaAlta(),
         getProximoNumeroSocio(),
       ])
-
-      if (resP.ok) {
-        setPersonas(resP.personas)
-      }
-
-      if (resD.ok) {
-        setDisciplinas(resD.disciplinas)
-      }
-
-      if (resN.ok) {
-        setProximoNumero(resN.proximo)
-      }
+      if (resP.ok) setPersonas(resP.personas)
+      if (resD.ok) setDisciplinas(resD.disciplinas)
+      if (resN.ok) setProximoNumero(resN.proximo)
     } catch (e) {
       console.error(e)
       setError('Error al cargar datos')
@@ -231,14 +216,12 @@ function PersonasPage() {
     setQuitarDeporte(false)
 
     const res = await getPersona({ data: { id } })
-
     if (!res.ok) {
       setError(res.error)
       return
     }
 
     const p = res.persona
-
     setEditId(p.id)
     setDocumentNumber(p.documentNumber)
     setFirstName(p.firstName)
@@ -258,18 +241,53 @@ function PersonasPage() {
     setShowForm(true)
   }
 
+  const abrirDetalle = async (id: number) => {
+    setError('')
+    setDetalleLoading(true)
+    setDetalleOpen(true)
+    setDetalle(null)
+    try {
+      const res = await getPersona({ data: { id } })
+      if (!res.ok) {
+        setError(res.error)
+        setDetalleOpen(false)
+        return
+      }
+      setDetalle({
+        persona: res.persona,
+        membresia: res.membresia,
+        inscripcion: res.inscripcion,
+      })
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo cargar el detalle')
+      setDetalleOpen(false)
+    } finally {
+      setDetalleLoading(false)
+    }
+  }
+
+  const cerrarDetalle = () => {
+    setDetalleOpen(false)
+    setDetalle(null)
+  }
+
+  const editarDesdeDetalle = () => {
+    if (!detalle?.persona?.id) return
+    const id = detalle.persona.id
+    cerrarDetalle()
+    void abrirEditar(id)
+  }
+
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
-
     setSaving(true)
     setError('')
     setOkMsg('')
-
     try {
       if (editId != null) {
         const quiereDeporte =
-          (esDeportista && !quitarDeporte) ||
-          (!esDeportista && agregarDeporte)
+          (esDeportista && !quitarDeporte) || (!esDeportista && agregarDeporte)
 
         const res = await actualizarPersona({
           data: {
@@ -298,10 +316,8 @@ function PersonasPage() {
                 : undefined,
           },
         })
-
-        if (!res.ok) {
-          setError(res.error)
-        } else {
+        if (!res.ok) setError(res.error)
+        else {
           setOkMsg('Persona actualizada')
           cerrarModal()
           await cargar()
@@ -328,16 +344,13 @@ function PersonasPage() {
                 : undefined,
           },
         })
-
-        if (!res.ok) {
-          setError(res.error)
-        } else {
+        if (!res.ok) setError(res.error)
+        else {
           setOkMsg(
             res.memberNumber
               ? `Persona guardada. N° socio asignado: ${res.memberNumber}`
               : 'Persona guardada correctamente',
           )
-
           cerrarModal()
           await cargar()
         }
@@ -352,9 +365,7 @@ function PersonasPage() {
 
   const ordenarPor = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDirection((actual) =>
-        actual === 'asc' ? 'desc' : 'asc',
-      )
+      setSortDirection((actual) => (actual === 'asc' ? 'desc' : 'asc'))
     } else {
       setSortKey(key)
       setSortDirection('asc')
@@ -363,80 +374,63 @@ function PersonasPage() {
 
   const personasOrdenadas = useMemo(() => {
     const copia = [...personas]
-
     copia.sort((a, b) => {
       const valorA = a[sortKey]
       const valorB = b[sortKey]
-
-      const vacioA =
-        valorA == null || String(valorA).trim() === ''
-
-      const vacioB =
-        valorB == null || String(valorB).trim() === ''
-
+      const vacioA = valorA == null || String(valorA).trim() === ''
+      const vacioB = valorB == null || String(valorB).trim() === ''
       if (vacioA && vacioB) return 0
       if (vacioA) return 1
       if (vacioB) return -1
 
       let resultado = 0
-
-      if (
-        sortKey === 'documentNumber' ||
-        sortKey === 'memberNumber'
-      ) {
+      if (sortKey === 'documentNumber' || sortKey === 'memberNumber') {
         const numeroA = Number(valorA)
         const numeroB = Number(valorB)
-
         if (!Number.isNaN(numeroA) && !Number.isNaN(numeroB)) {
           resultado = numeroA - numeroB
         } else {
-          resultado = String(valorA).localeCompare(
-            String(valorB),
-            'es',
-            {
-              numeric: true,
-              sensitivity: 'base',
-            },
-          )
-        }
-      } else if (sortKey === 'birthDate') {
-        resultado =
-          new Date(String(valorA)).getTime() -
-          new Date(String(valorB)).getTime()
-      } else if (sortKey === 'tieneDebitoAutomatico') {
-        resultado =
-          Number(Boolean(valorA)) - Number(Boolean(valorB))
-      } else {
-        resultado = String(valorA).localeCompare(
-          String(valorB),
-          'es',
-          {
+          resultado = String(valorA).localeCompare(String(valorB), 'es', {
             numeric: true,
             sensitivity: 'base',
-          },
-        )
+          })
+        }
+      } else {
+        resultado = String(valorA).localeCompare(String(valorB), 'es', {
+          numeric: true,
+          sensitivity: 'base',
+        })
       }
-
-      return sortDirection === 'asc'
-        ? resultado
-        : -resultado
+      return sortDirection === 'asc' ? resultado : -resultado
     })
-
     return copia
   }, [personas, sortKey, sortDirection])
 
-  const encabezadoOrdenable = (
-    key: SortKey,
-    label: string,
-  ) => {
+  const personasFiltradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    if (!q) return personasOrdenadas
+    const qDigits = q.replace(/\D/g, '')
+
+    return personasOrdenadas.filter((p) => {
+      if (qDigits && String(p.documentNumber || '').includes(qDigits)) {
+        return true
+      }
+      if (qDigits && String(p.memberNumber || '').includes(qDigits)) {
+        return true
+      }
+      const ape = String(p.lastName || '').toLowerCase()
+      const nom = String(p.firstName || '').toLowerCase()
+      if (ape.includes(q) || nom.includes(q)) return true
+      if (`${ape} ${nom}`.includes(q) || `${nom} ${ape}`.includes(q)) {
+        return true
+      }
+      return false
+    })
+  }, [personasOrdenadas, busqueda])
+
+  const encabezadoOrdenable = (key: SortKey, label: string) => {
     const activo = sortKey === key
-
-    const flecha = activo
-      ? sortDirection === 'asc'
-        ? ' ↑'
-        : ' ↓'
-      : ''
-
+    const flecha = activo ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''
     return (
       <button
         type="button"
@@ -452,21 +446,17 @@ function PersonasPage() {
   const bloqueDeporteUI = (
     <div className="space-y-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
       <p className="text-xs text-blue-800">
-        La categoría deportiva se determina automáticamente según el
-        deporte y la fecha de nacimiento.
+        La categoría deportiva se determina automáticamente según el deporte y
+        la fecha de nacimiento.
       </p>
-
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">
           Deporte
         </label>
-
         <select
           value={disciplinaId}
           onChange={(e) => {
-            setDisciplinaId(
-              e.target.value ? Number(e.target.value) : '',
-            )
+            setDisciplinaId(e.target.value ? Number(e.target.value) : '')
             setCategoriaAutomatica(null)
             setCategoriaError('')
           }}
@@ -474,7 +464,6 @@ function PersonasPage() {
           required={mostrarBloqueDeporte}
         >
           <option value="">Elegir...</option>
-
           {disciplinas.map((d) => (
             <option key={d.id} value={d.id}>
               {d.nombre}
@@ -482,31 +471,25 @@ function PersonasPage() {
           ))}
         </select>
       </div>
-
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">
           Categoría deportiva
         </label>
-
         {categoriaLoading && (
           <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
             Calculando categoría...
           </div>
         )}
-
         {!categoriaLoading && categoriaAutomatica && (
           <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
             <div className="text-sm font-semibold text-green-800">
               {categoriaAutomatica.nombre}
             </div>
-
             {categoriaAutomatica.edadDeportiva != null && (
               <div className="text-xs text-green-700 mt-1">
-                Edad deportiva: {categoriaAutomatica.edadDeportiva}{' '}
-                años
+                Edad deportiva: {categoriaAutomatica.edadDeportiva} años
               </div>
             )}
-
             {categoriaAutomatica.anioNacimiento != null && (
               <div className="text-xs text-green-700">
                 Año de nacimiento: {categoriaAutomatica.anioNacimiento}
@@ -514,7 +497,6 @@ function PersonasPage() {
             )}
           </div>
         )}
-
         {!categoriaLoading && categoriaError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {categoriaError}
@@ -528,18 +510,12 @@ function PersonasPage() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">
-            Personas
-          </h2>
-
+          <h2 className="text-xl font-bold text-gray-800">Personas</h2>
           <p className="text-sm text-gray-500">
             Alta, edición, socio / deportista
-            {proximoNumero != null
-              ? ` · Próximo n° socio: ${proximoNumero}`
-              : ''}
+            {proximoNumero != null ? ` · Próximo n° socio: ${proximoNumero}` : ''}
           </p>
         </div>
-
         <button
           type="button"
           onClick={abrirNueva}
@@ -549,184 +525,262 @@ function PersonasPage() {
         </button>
       </div>
 
-      {error && !showForm && (
+      {error && !showForm && !detalleOpen && (
         <div className="mb-3 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
           {error}
         </div>
       )}
-
       {okMsg && (
         <div className="mb-3 p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-sm">
           {okMsg}
         </div>
       )}
 
-      <div className="bg-white border rounded-xl shadow-sm overflow-x-auto">
+      <div className="mb-3 flex flex-wrap gap-2 items-center">
+        <input
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar por DNI, n° socio, apellido o nombre..."
+          className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[220px] max-w-md"
+        />
+        {busqueda && (
+          <button
+            type="button"
+            onClick={() => setBusqueda('')}
+            className="text-sm text-gray-600 hover:underline"
+          >
+            Limpiar
+          </button>
+        )}
+        <span className="text-xs text-gray-500">
+          {personasFiltradas.length} de {personas.length}
+        </span>
+      </div>
+
+      <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         {loading ? (
+          <p className="p-4 text-sm text-gray-500">Cargando...</p>
+        ) : personasFiltradas.length === 0 ? (
           <p className="p-4 text-sm text-gray-500">
-            Cargando...
-          </p>
-        ) : personas.length === 0 ? (
-          <p className="p-4 text-sm text-gray-500">
-            No hay personas cargadas.
+            {busqueda
+              ? 'No hay resultados para la búsqueda.'
+              : 'No hay personas cargadas.'}
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600">
-              <tr>
-                <th className="px-3 py-2">
-                  {encabezadoOrdenable(
-                    'documentNumber',
-                    'DNI',
-                  )}
-                </th>
+          <div className="overflow-x-auto max-h-[70vh]">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-gray-600 sticky top-0">
+                <tr>
+                  <th className="px-3 py-2">
+                    {encabezadoOrdenable('lastName', 'Apellido')}
+                  </th>
+                  <th className="px-3 py-2">
+                    {encabezadoOrdenable('firstName', 'Nombre')}
+                  </th>
+                  <th className="px-3 py-2">
+                    {encabezadoOrdenable('documentNumber', 'DNI')}
+                  </th>
+                  <th className="px-3 py-2">
+                    {encabezadoOrdenable('memberNumber', 'N° socio')}
+                  </th>
+                  <th className="px-3 py-2">
+                    {encabezadoOrdenable('category', 'Cat. social')}
+                  </th>
+                  <th className="px-3 py-2">
+                    {encabezadoOrdenable('deporte', 'Deporte')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {personasFiltradas.map((p) => (
+                  <tr
+                    key={`${p.id}-${p.deporte || ''}-${p.categoriaDeportiva || ''}`}
+                    className="border-t hover:bg-blue-50 cursor-pointer"
+                    onClick={() => abrirDetalle(p.id)}
+                  >
+                    <td className="px-3 py-2 font-medium">{p.lastName}</td>
+                    <td className="px-3 py-2">{p.firstName}</td>
+                    <td className="px-3 py-2">{p.documentNumber}</td>
+                    <td className="px-3 py-2">{p.memberNumber ?? '—'}</td>
+                    <td className="px-3 py-2">
+                      {p.category ? (
+                        p.category
+                      ) : (
+                        <span className="text-gray-400">No socio</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {p.deporte
+                        ? `${p.deporte}${
+                            p.categoriaDeportiva
+                              ? ` · ${p.categoriaDeportiva}`
+                              : ''
+                          }`
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-                <th className="px-3 py-2">
-                  {encabezadoOrdenable(
-                    'memberNumber',
-                    'N° socio',
-                  )}
-                </th>
+      {detalleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={cerrarDetalle}
+            aria-hidden
+          />
+          <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-xl border">
+            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800">Ficha de persona</h3>
+              <button
+                type="button"
+                onClick={cerrarDetalle}
+                className="text-gray-500 hover:text-gray-800 text-sm px-2 py-1"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              {!detalleLoading && detalle && (
+                <>
+                  <div>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {detalle.persona.lastName}, {detalle.persona.firstName}
+                    </p>
+                    <p className="text-gray-600">
+                      DNI {detalle.persona.documentNumber}
+                      {detalle.membresia?.memberNumber
+                        ? ` · Socio n° ${detalle.membresia.memberNumber}`
+                        : ' · No socio'}
+                    </p>
+                  </div>
 
-                <th className="px-3 py-2">
-                  {encabezadoOrdenable(
-                    'lastName',
-                    'Apellido',
-                  )}
-                </th>
+                  <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Datos personales
+                    </p>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                      <div>
+                        <dt className="text-xs text-gray-500">Fecha de nacimiento</dt>
+                        <dd>{formatFechaAR(detalle.persona.birthDate)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">Estado ficha</dt>
+                        <dd>{detalle.persona.status ?? '—'}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs text-gray-500">Domicilio</dt>
+                        <dd>{detalle.persona.address || '—'}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs text-gray-500">Domicilio de cobro</dt>
+                        <dd>
+                          {detalle.persona.addressCobro ||
+                            detalle.persona.address ||
+                            '—'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">Celular</dt>
+                        <dd>{detalle.persona.phoneAlt || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">Teléfono fijo</dt>
+                        <dd>{detalle.persona.phone || '—'}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs text-gray-500">Email</dt>
+                        <dd>{detalle.persona.email || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">Débito automático</dt>
+                        <dd>
+                          {detalle.persona.tieneDebitoAutomatico ? 'Sí' : 'No'}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
 
-                <th className="px-3 py-2">
-                  {encabezadoOrdenable(
-                    'firstName',
-                    'Nombres',
-                  )}
-                </th>
-
-                <th className="px-3 py-2 whitespace-nowrap">
-                  {encabezadoOrdenable(
-                    'birthDate',
-                    'Fecha nac.',
-                  )}
-                </th>
-
-                <th className="px-3 py-2">
-                  {encabezadoOrdenable(
-                    'phoneAlt',
-                    'Celular',
-                  )}
-                </th>
-
-                <th className="px-3 py-2">
-                  {encabezadoOrdenable(
-                    'deporte',
-                    'Deporte',
-                  )}
-                </th>
-
-                <th className="px-3 py-2 whitespace-nowrap">
-                  {encabezadoOrdenable(
-                    'category',
-                    'Categoría social',
-                  )}
-                </th>
-
-                <th className="px-3 py-2">
-                  {encabezadoOrdenable(
-                    'email',
-                    'Email',
-                  )}
-                </th>
-
-                <th className="px-3 py-2 whitespace-nowrap">
-                  {encabezadoOrdenable(
-                    'tieneDebitoAutomatico',
-                    'Débito aut.',
-                  )}
-                </th>
-
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {personasOrdenadas.map((p) => (
-                <tr
-                  key={`${p.id}-${p.deporte || ''}-${p.categoriaDeportiva || ''}`}
-                  className="border-t"
-                >
-                  <td className="px-3 py-2">
-                    {p.documentNumber}
-                  </td>
-
-                  <td className="px-3 py-2">
-                    {p.memberNumber ?? '—'}
-                  </td>
-
-                  <td className="px-3 py-2 font-medium">
-                    {p.lastName}
-                  </td>
-
-                  <td className="px-3 py-2">
-                    {p.firstName}
-                  </td>
-
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {p.birthDate
-                      ? String(p.birthDate)
-                          .slice(0, 10)
-                          .split('-')
-                          .reverse()
-                          .join('/')
-                      : '—'}
-                  </td>
-
-                  <td className="px-3 py-2">
-                    {p.phoneAlt ?? '—'}
-                  </td>
-
-                  <td className="px-3 py-2">
-                    {p.deporte
-                      ? `${p.deporte}${
-                          p.categoriaDeportiva
-                            ? ` · ${p.categoriaDeportiva}`
-                            : ''
-                        }`
-                      : '—'}
-                  </td>
-
-                  <td className="px-3 py-2">
-                    {p.category ? (
-                      p.category
+                  <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Situación de socio
+                    </p>
+                    {detalle.membresia ? (
+                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                        <div>
+                          <dt className="text-xs text-gray-500">N° de socio</dt>
+                          <dd>{detalle.membresia.memberNumber ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-gray-500">Categoría social</dt>
+                          <dd className="capitalize">
+                            {detalle.membresia.category ?? '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-gray-500">Estado membresía</dt>
+                          <dd>{detalle.membresia.status ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-gray-500">Alta desde</dt>
+                          <dd>{formatFechaAR(detalle.membresia.startDate)}</dd>
+                        </div>
+                      </dl>
                     ) : (
-                      <span className="text-gray-400">
-                        No socio
-                      </span>
+                      <p className="text-gray-600">No es socio del club.</p>
                     )}
-                  </td>
+                  </div>
 
-                  <td className="px-3 py-2">
-                    {p.email ?? '—'}
-                  </td>
+                  <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Actividad deportiva
+                    </p>
+                    {detalle.inscripcion ? (
+                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                        <div>
+                          <dt className="text-xs text-gray-500">Deporte</dt>
+                          <dd>{detalle.inscripcion.deporte ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-gray-500">
+                            Categoría deportiva
+                          </dt>
+                          <dd>
+                            {detalle.inscripcion.categoriaDeportiva ?? '—'}
+                          </dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <p className="text-gray-600">Sin inscripción deportiva activa.</p>
+                    )}
+                  </div>
 
-                  <td className="px-3 py-2 text-center">
-                    {p.tieneDebitoAutomatico ? 'Sí' : '—'}
-                  </td>
-
-                  <td className="px-3 py-2">
+                  <div className="flex gap-2 pt-3 border-t">
                     <button
                       type="button"
-                      onClick={() => abrirEditar(p.id)}
-                      className="text-blue-600 hover:underline text-xs"
+                      onClick={editarDesdeDetalle}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
                     >
                       Editar
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                    <button
+                      type="button"
+                      onClick={cerrarDetalle}
+                      className="border text-sm px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -735,15 +789,11 @@ function PersonasPage() {
             onClick={cerrarModal}
             aria-hidden
           />
-
           <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-xl border">
             <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
               <h3 className="font-semibold text-gray-800">
-                {editId != null
-                  ? `Editar persona #${editId}`
-                  : 'Nueva persona'}
+                {editId != null ? `Editar persona #${editId}` : 'Nueva persona'}
               </h3>
-
               <button
                 type="button"
                 onClick={cerrarModal}
@@ -753,10 +803,7 @@ function PersonasPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={handleGuardar}
-              className="p-4 space-y-3"
-            >
+            <form onSubmit={handleGuardar} className="p-4 space-y-3">
               {error && (
                 <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
                   {error}
@@ -765,33 +812,26 @@ function PersonasPage() {
 
               {editId != null && memberNumberShow && (
                 <p className="text-sm text-gray-600">
-                  N° socio:{' '}
-                  <strong>{memberNumberShow}</strong>
+                  N° socio: <strong>{memberNumberShow}</strong>
                 </p>
               )}
-
-              {editId == null &&
-                esSocio &&
-                proximoNumero != null && (
-                  <p className="text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-2">
-                    Se asignará automáticamente el n° de socio{' '}
-                    <strong>{proximoNumero}</strong>
-                  </p>
-                )}
+              {editId == null && esSocio && proximoNumero != null && (
+                <p className="text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-2">
+                  Se asignará automáticamente el n° de socio{' '}
+                  <strong>{proximoNumero}</strong>
+                </p>
+              )}
 
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     DNI *
                   </label>
-
                   <input
                     value={documentNumber}
                     onChange={(e) =>
                       setDocumentNumber(
-                        e.target.value
-                          .replace(/\D/g, '')
-                          .slice(0, 8),
+                        e.target.value.replace(/\D/g, '').slice(0, 8),
                       )
                     }
                     className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -801,109 +841,79 @@ function PersonasPage() {
                     maxLength={8}
                   />
                 </div>
-
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Fecha nacimiento *
                   </label>
-
                   <input
                     type="date"
                     value={birthDate}
-                    onChange={(e) =>
-                      setBirthDate(e.target.value)
-                    }
+                    onChange={(e) => setBirthDate(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     required
                   />
                 </div>
-
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Apellido *
                   </label>
-
                   <input
                     value={lastName}
-                    onChange={(e) =>
-                      setLastName(e.target.value)
-                    }
+                    onChange={(e) => setLastName(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     required
                   />
                 </div>
-
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Nombre *
                   </label>
-
                   <input
                     value={firstName}
-                    onChange={(e) =>
-                      setFirstName(e.target.value)
-                    }
+                    onChange={(e) => setFirstName(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     required
                   />
                 </div>
-
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Domicilio *
                   </label>
-
                   <input
                     value={address}
-                    onChange={(e) =>
-                      setAddress(e.target.value)
-                    }
+                    onChange={(e) => setAddress(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     required
                   />
                 </div>
-
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Domicilio de cobro
                   </label>
-
                   <input
                     value={addressCobro}
-                    onChange={(e) =>
-                      setAddressCobro(e.target.value)
-                    }
+                    onChange={(e) => setAddressCobro(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
-
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Tel. fijo
                   </label>
-
                   <input
                     value={phone}
-                    onChange={(e) =>
-                      setPhone(e.target.value)
-                    }
+                    onChange={(e) => setPhone(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
-
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Celular *
                   </label>
-
                   <input
                     value={phoneAlt}
                     onChange={(e) =>
-                      setPhoneAlt(
-                        e.target.value
-                          .replace(/\D/g, '')
-                          .slice(0, 13),
-                      )
+                      setPhoneAlt(e.target.value.replace(/\D/g, '').slice(0, 13))
                     }
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     required
@@ -913,18 +923,14 @@ function PersonasPage() {
                     maxLength={13}
                   />
                 </div>
-
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Email
                   </label>
-
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) =>
-                      setEmail(e.target.value)
-                    }
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     placeholder="opcional"
                   />
@@ -935,9 +941,7 @@ function PersonasPage() {
                 <input
                   type="checkbox"
                   checked={tieneDebito}
-                  onChange={(e) =>
-                    setTieneDebito(e.target.checked)
-                  }
+                  onChange={(e) => setTieneDebito(e.target.checked)}
                 />
                 Débito automático (descuento)
               </label>
@@ -950,10 +954,7 @@ function PersonasPage() {
                       checked={esSocio}
                       onChange={(e) => {
                         setEsSocio(e.target.checked)
-
-                        if (!e.target.checked) {
-                          setEsDeportista(false)
-                        }
+                        if (!e.target.checked) setEsDeportista(false)
                       }}
                     />
                     Es socio del club
@@ -965,9 +966,7 @@ function PersonasPage() {
                         <input
                           type="checkbox"
                           checked={esDeportista}
-                          onChange={(e) =>
-                            setEsDeportista(e.target.checked)
-                          }
+                          onChange={(e) => setEsDeportista(e.target.checked)}
                         />
                         Practica deporte
                       </label>
@@ -977,7 +976,6 @@ function PersonasPage() {
                           <label className="block text-xs font-medium text-gray-600 mb-1">
                             Categoría social
                           </label>
-
                           <select
                             value={category}
                             onChange={(e) =>
@@ -992,18 +990,10 @@ function PersonasPage() {
                             className="w-full border rounded-lg px-3 py-2 text-sm"
                             required
                           >
-                            <option value="menor">
-                              Menor
-                            </option>
-                            <option value="cadete">
-                              Cadete
-                            </option>
-                            <option value="activo">
-                              Activo
-                            </option>
-                            <option value="vitalicio">
-                              Vitalicio
-                            </option>
+                            <option value="menor">Menor</option>
+                            <option value="cadete">Cadete</option>
+                            <option value="activo">Activo</option>
+                            <option value="vitalicio">Vitalicio</option>
                           </select>
                         </div>
                       )}
@@ -1013,12 +1003,7 @@ function PersonasPage() {
                           <span className="text-gray-600">
                             Categoría social (automática):{' '}
                           </span>
-
-                          <strong>
-                            {categoriaSocialPorEdad(
-                              birthDate,
-                            )}
-                          </strong>
+                          <strong>{categoriaSocialPorEdad(birthDate)}</strong>
                         </div>
                       )}
 
@@ -1035,9 +1020,7 @@ function PersonasPage() {
                       <input
                         type="checkbox"
                         checked={hacerSocio}
-                        onChange={(e) =>
-                          setHacerSocio(e.target.checked)
-                        }
+                        onChange={(e) => setHacerSocio(e.target.checked)}
                       />
                       Dar de alta como socio
                     </label>
@@ -1050,7 +1033,6 @@ function PersonasPage() {
                         <label className="block text-xs font-medium text-gray-600 mb-1">
                           Categoría social
                         </label>
-
                         <select
                           value={category}
                           onChange={(e) =>
@@ -1064,18 +1046,10 @@ function PersonasPage() {
                           }
                           className="w-full border rounded-lg px-3 py-2 text-sm"
                         >
-                          <option value="menor">
-                            Menor
-                          </option>
-                          <option value="cadete">
-                            Cadete
-                          </option>
-                          <option value="activo">
-                            Activo
-                          </option>
-                          <option value="vitalicio">
-                            Vitalicio
-                          </option>
+                          <option value="menor">Menor</option>
+                          <option value="cadete">Cadete</option>
+                          <option value="activo">Activo</option>
+                          <option value="vitalicio">Vitalicio</option>
                         </select>
                       </div>
                     )}
@@ -1086,13 +1060,8 @@ function PersonasPage() {
                         type="checkbox"
                         checked={quitarDeporte}
                         onChange={(e) => {
-                          setQuitarDeporte(
-                            e.target.checked,
-                          )
-
-                          if (e.target.checked) {
-                            setAgregarDeporte(false)
-                          }
+                          setQuitarDeporte(e.target.checked)
+                          if (e.target.checked) setAgregarDeporte(false)
                         }}
                       />
                       Quitar deporte (pasar a socio social)
@@ -1105,13 +1074,8 @@ function PersonasPage() {
                         type="checkbox"
                         checked={agregarDeporte}
                         onChange={(e) => {
-                          setAgregarDeporte(
-                            e.target.checked,
-                          )
-
-                          if (e.target.checked) {
-                            setQuitarDeporte(false)
-                          }
+                          setAgregarDeporte(e.target.checked)
+                          if (e.target.checked) setQuitarDeporte(false)
                         }}
                       />
                       Agregar deporte
@@ -1123,17 +1087,11 @@ function PersonasPage() {
                       <span className="text-gray-600">
                         Categoría social (automática):{' '}
                       </span>
-
-                      <strong>
-                        {categoriaSocialPorEdad(
-                          birthDate,
-                        )}
-                      </strong>
+                      <strong>{categoriaSocialPorEdad(birthDate)}</strong>
                     </div>
                   )}
 
-                  {mostrarBloqueDeporte &&
-                    bloqueDeporteUI}
+                  {mostrarBloqueDeporte && bloqueDeporteUI}
                 </div>
               )}
 
@@ -1149,7 +1107,6 @@ function PersonasPage() {
                       ? 'Actualizar'
                       : 'Guardar'}
                 </button>
-
                 <button
                   type="button"
                   onClick={cerrarModal}

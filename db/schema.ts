@@ -39,6 +39,7 @@ export const people = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
     recordSource: text('record_source'),
     notes: text('notes'),
+    beca: boolean('beca').notNull().default(false),
   },
   (t) => [
     uniqueIndex('people_document_idx').on(t.documentType, t.documentNumber),
@@ -61,6 +62,8 @@ export const memberships = pgTable(
     notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    subcategoriaCuota: text('subcategoria_cuota').notNull().default('pleno'),
+// pleno | 3_familiar | 4_familiar
   },
   (t) => [uniqueIndex('memberships_member_number_idx').on(t.memberNumber)],
 )
@@ -172,6 +175,8 @@ export const inscripcionesDeportivas = pgTable('inscripciones_deportivas', {
   fechaFin: date('fecha_fin'),
   activa: boolean('activa').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  subcategoriaCuota: text('subcategoria_cuota').notNull().default('pleno'),
+// pleno | 2_hermano | 3_hermano
 })
 
 // ============================================================
@@ -220,6 +225,13 @@ export const cuotasGeneradas = pgTable(
     fechaVencimiento: date('fecha_vencimiento').notNull(),
     estado: text('estado').notNull().default('pendiente'), // pendiente | pagada | anulada
     generadaEn: timestamp('generada_en').defaultNow().notNull(),
+    dni: text('dni'),
+    nombreCompleto: text('nombre_completo'),
+    nroSocio: text('nro_socio'),
+    subcategoriaCuota: text('subcategoria_cuota'),
+    disciplinaNombre: text('disciplina_nombre'),
+    categoriaDeportivaNombre: text('categoria_deportiva_nombre'),
+    tarifarioId: integer('tarifario_id'),
   },
   (t) => [
     uniqueIndex('cuota_unica_person_idx').on(

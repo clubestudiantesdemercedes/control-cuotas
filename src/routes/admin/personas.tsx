@@ -6,6 +6,7 @@ import {
   listarDeportesParaAlta,
   getPersona,
   actualizarPersona,
+  darBajaMembresia,
 } from '../../server/personas.functions'
 import { previsualizarCategoriaDeportiva } from '../../server/categoria.functions'
 import { getProximoNumeroSocio } from '../../server/config.functions'
@@ -13,6 +14,14 @@ import { getProximoNumeroSocio } from '../../server/config.functions'
 export const Route = createFileRoute('/admin/personas')({
   component: PersonasPage,
 })
+
+type SortKey =
+  | 'documentNumber'
+  | 'memberNumber'
+  | 'lastName'
+  | 'firstName'
+  | 'deporte'
+  | 'category'
 
 function PersonasPage() {
   const [personas, setPersonas] = useState<any[]>([])
@@ -63,7 +72,7 @@ function PersonasPage() {
   const [agregarDeporte, setAgregarDeporte] = useState(false)
   const [quitarDeporte, setQuitarDeporte] = useState(false)
 
-  const [busqueda, setBusqueda] = useState('')
+  const [filtro, setFiltro] = useState('')
   const [detalleOpen, setDetalleOpen] = useState(false)
   const [detalleLoading, setDetalleLoading] = useState(false)
   const [detalle, setDetalle] = useState<{
@@ -72,13 +81,10 @@ function PersonasPage() {
     inscripcion: any
   } | null>(null)
 
-  type SortKey =
-    | 'documentNumber'
-    | 'memberNumber'
-    | 'lastName'
-    | 'firstName'
-    | 'deporte'
-    | 'category'
+  const [fechaBaja, setFechaBaja] = useState(
+    new Date().toISOString().slice(0, 10),
+  )
+  const [motivoBaja, setMotivoBaja] = useState('')
 
   const [sortKey, setSortKey] = useState<SortKey>('lastName')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -160,7 +166,7 @@ function PersonasPage() {
       }
     }
 
-    calcularCategoria()
+    void calcularCategoria()
     return () => {
       cancelado = true
     }
@@ -187,7 +193,7 @@ function PersonasPage() {
   }
 
   useEffect(() => {
-    cargar()
+    void cargar()
   }, [])
 
   const resetForm = () => {
@@ -215,6 +221,8 @@ function PersonasPage() {
     setQuitarDeporte(false)
     setCategoriaAutomatica(null)
     setCategoriaError('')
+    setFechaBaja(new Date().toISOString().slice(0, 10))
+    setMotivoBaja('')
   }
 
   const cerrarModal = () => {
@@ -259,14 +267,14 @@ function PersonasPage() {
     setEsSocio(!!res.membresia)
     setEsDeportista(!!res.inscripcion)
     setCategory((res.membresia?.category as any) || 'activo')
-    setSubcategoriaCuota(
-      (res.membresia?.subcategoriaCuota as any) || 'pleno',
-    )
+    setSubcategoriaCuota((res.membresia?.subcategoriaCuota as any) || 'pleno')
     setSubcategoriaCuotaDeporte(
       (res.inscripcion?.subcategoriaCuota as any) || 'pleno',
     )
     setMemberNumberShow(res.membresia?.memberNumber || '')
     setDisciplinaId(res.inscripcion?.disciplinaId || '')
+    setFechaBaja(new Date().toISOString().slice(0, 10))
+    setMotivoBaja('')
     setShowForm(true)
   }
 
@@ -287,6 +295,8 @@ function PersonasPage() {
         membresia: res.membresia,
         inscripcion: res.inscripcion,
       })
+      setFechaBaja(new Date().toISOString().slice(0, 10))
+      setMotivoBaja('')
     } catch (e) {
       console.error(e)
       setError('No se pudo cargar el detalle')
@@ -306,6 +316,38 @@ function PersonasPage() {
     const id = detalle.persona.id
     cerrarDetalle()
     void abrirEditar(id)
+  }
+
+  const handleBaja = async (personId: number) => {
+    if (
+      !confirm(
+        `¿Confirmar baja de socio con fecha ${fechaBaja}? No entrará en generaciones nuevas de cuotas.`,
+      )
+    ) {
+      return
+    }
+    setError('')
+    setOkMsg('')
+    try {
+      const res = await darBajaMembresia({
+        data: {
+          personId,
+          fechaBaja,
+          motivo: motivoBaja || 'Baja de socio',
+        },
+      })
+      if (!res.ok) setError(res.error)
+      else {
+        setOkMsg(res.mensaje)
+        setDetalleOpen(false)
+        setDetalle(null)
+        setShowForm(false)
+        await cargar()
+      }
+    } catch (e) {
+      console.error(e)
+      setError('Error al registrar la baja')
+    }
   }
 
   const handleGuardar = async (e: React.FormEvent) => {
@@ -415,284 +457,145 @@ function PersonasPage() {
     }
   }
 
-  const personasOrdenadas = useMemo(() => {
-    const copia = [...personas]
-    copia.sort((a, b) => {
-      const valorA = a[sortKey]
-      const valorB = b[sortKey]
-      const vacioA = valorA == null || String(valorA).trim() === ''
-      const vacioB = valorB == null || String(valorB).trim() === ''
-      if (vacioA && vacioB) return 0
-      if (vacioA) return 1
-      if (vacioB) return -1
-
-      let resultado = 0
-      if (sortKey === 'documentNumber' || sortKey === 'memberNumber') {
-        const numeroA = Number(valorA)
-        const numeroB = Number(valorB)
-        if (!Number.isNaN(numeroA) && !Number.isNaN(numeroB)) {
-          resultado = numeroA - numeroB
-        } else {
-          resultado = String(valorA).localeCompare(String(valorB), 'es', {
-            numeric: true,
-            sensitivity: 'base',
-          })
-        }
-      } else {
-        resultado = String(valorA).localeCompare(String(valorB), 'es', {
-          numeric: true,
-          sensitivity: 'base',
-        })
-      }
-      return sortDirection === 'asc' ? resultado : -resultado
-    })
-    return copia
-  }, [personas, sortKey, sortDirection])
-
   const personasFiltradas = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
-    if (!q) return personasOrdenadas
-    const qDigits = q.replace(/\D/g, '')
-
-    return personasOrdenadas.filter((p) => {
-      if (qDigits && String(p.documentNumber || '').includes(qDigits)) {
-        return true
-      }
-      if (qDigits && String(p.memberNumber || '').includes(qDigits)) {
-        return true
-      }
-      const ape = String(p.lastName || '').toLowerCase()
-      const nom = String(p.firstName || '').toLowerCase()
-      if (ape.includes(q) || nom.includes(q)) return true
-      if (`${ape} ${nom}`.includes(q) || `${nom} ${ape}`.includes(q)) {
-        return true
-      }
-      return false
+    const q = filtro.trim().toLowerCase()
+    const digits = q.replace(/\D/g, '')
+    let lista = [...personas]
+    if (q) {
+      lista = lista.filter((p) => {
+        if (digits && String(p.documentNumber || '').includes(digits)) return true
+        if (digits && String(p.memberNumber || '').includes(digits)) return true
+        if (String(p.lastName || '').toLowerCase().includes(q)) return true
+        if (String(p.firstName || '').toLowerCase().includes(q)) return true
+        if (
+          `${p.lastName || ''} ${p.firstName || ''}`
+            .toLowerCase()
+            .includes(q)
+        )
+          return true
+        return false
+      })
+    }
+    lista.sort((a, b) => {
+      const valorA = a[sortKey] ?? ''
+      const valorB = b[sortKey] ?? ''
+      const cmp = String(valorA).localeCompare(String(valorB), 'es', {
+        sensitivity: 'base',
+        numeric: true,
+      })
+      return sortDirection === 'asc' ? cmp : -cmp
     })
-  }, [personasOrdenadas, busqueda])
+    return lista
+  }, [personas, filtro, sortKey, sortDirection])
 
-  const encabezadoOrdenable = (key: SortKey, label: string) => {
-    const activo = sortKey === key
-    const flecha = activo ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''
-    return (
-      <button
-        type="button"
-        onClick={() => ordenarPor(key)}
-        className="font-semibold hover:text-blue-600 whitespace-nowrap"
-      >
-        {label}
-        {flecha}
-      </button>
-    )
-  }
-
-  const selectSubSocial = (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
-        Subcategoría de cuota
-      </label>
-      <select
-        value={subcategoriaCuota}
-        onChange={(e) =>
-          setSubcategoriaCuota(
-            e.target.value as 'pleno' | '3_familiar' | '4_familiar',
-          )
-        }
-        className="w-full border rounded-lg px-3 py-2 text-sm"
-      >
-        <option value="pleno">Pleno (valor normal)</option>
-        <option value="3_familiar">3.º familiar</option>
-        <option value="4_familiar">4.º familiar o superior</option>
-      </select>
-    </div>
-  )
-
-  const bloqueDeporteUI = (
-    <div className="space-y-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-      <p className="text-xs text-blue-800">
-        La categoría deportiva se determina automáticamente según el deporte y
-        la fecha de nacimiento.
-      </p>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">
-          Deporte
-        </label>
-        <select
-          value={disciplinaId}
-          onChange={(e) => {
-            setDisciplinaId(e.target.value ? Number(e.target.value) : '')
-            setCategoriaAutomatica(null)
-            setCategoriaError('')
-          }}
-          className="w-full border rounded-lg px-3 py-2 text-sm"
-          required={mostrarBloqueDeporte}
-        >
-          <option value="">Elegir...</option>
-          {disciplinas.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.nombre}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">
-          Categoría deportiva
-        </label>
-        {categoriaLoading && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-            Calculando categoría...
-          </div>
-        )}
-        {!categoriaLoading && categoriaAutomatica && (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-            <div className="text-sm font-semibold text-green-800">
-              {categoriaAutomatica.nombre}
-            </div>
-            {categoriaAutomatica.edadDeportiva != null && (
-              <div className="text-xs text-green-700 mt-1">
-                Edad deportiva: {categoriaAutomatica.edadDeportiva} años
-              </div>
-            )}
-            {categoriaAutomatica.anioNacimiento != null && (
-              <div className="text-xs text-green-700">
-                Año de nacimiento: {categoriaAutomatica.anioNacimiento}
-              </div>
-            )}
-          </div>
-        )}
-        {!categoriaLoading && categoriaError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {categoriaError}
-          </div>
-        )}
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">
-          Subcategoría cuota deportiva
-        </label>
-        <select
-          value={subcategoriaCuotaDeporte}
-          onChange={(e) =>
-            setSubcategoriaCuotaDeporte(
-              e.target.value as 'pleno' | '2_hermano' | '3_hermano',
-            )
-          }
-          className="w-full border rounded-lg px-3 py-2 text-sm"
-        >
-          <option value="pleno">Deportista pleno</option>
-          <option value="2_hermano">2.º hermano</option>
-          <option value="3_hermano">3.º hermano</option>
-        </select>
-      </div>
-    </div>
-  )
+  const sortMark = (key: SortKey) =>
+    sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Personas</h2>
+          <h2 className="text-xl font-bold text-gray-800">Personas / socios</h2>
           <p className="text-sm text-gray-500">
-            Alta, edición, socio / deportista
-            {proximoNumero != null ? ` · Próximo n° socio: ${proximoNumero}` : ''}
+            Click en una fila para ver la ficha. Próximo n° socio:{' '}
+            <strong>{proximoNumero ?? '—'}</strong>
           </p>
         </div>
         <button
           type="button"
           onClick={abrirNueva}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-2 rounded-lg"
+          className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
         >
           Nueva persona
         </button>
       </div>
 
-      {error && !showForm && !detalleOpen && (
-        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
       {okMsg && (
-        <div className="mb-3 p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-sm">
+        <div className="p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-sm">
           {okMsg}
         </div>
       )}
+      {error && !showForm && !detalleOpen && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
 
-      <div className="mb-3 flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap gap-2 items-center">
         <input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por DNI, n° socio, apellido o nombre..."
-          className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[220px] max-w-md"
+          value={filtro}
+          onChange={(e) => setFiltro(e.target.value)}
+          placeholder="Buscar por DNI, n° socio o apellido..."
+          className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[220px]"
         />
-        {busqueda && (
-          <button
-            type="button"
-            onClick={() => setBusqueda('')}
-            className="text-sm text-gray-600 hover:underline"
-          >
-            Limpiar
-          </button>
-        )}
         <span className="text-xs text-gray-500">
-          {personasFiltradas.length} de {personas.length}
+          {personasFiltradas.length} resultado(s)
         </span>
       </div>
 
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
         {loading ? (
           <p className="p-4 text-sm text-gray-500">Cargando...</p>
-        ) : personasFiltradas.length === 0 ? (
-          <p className="p-4 text-sm text-gray-500">
-            {busqueda
-              ? 'No hay resultados para la búsqueda.'
-              : 'No hay personas cargadas.'}
-          </p>
         ) : (
           <div className="overflow-x-auto max-h-[70vh]">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-gray-600 sticky top-0">
                 <tr>
-                  <th className="px-3 py-2">
-                    {encabezadoOrdenable('lastName', 'Apellido')}
+                  <th
+                    className="px-3 py-2 cursor-pointer"
+                    onClick={() => ordenarPor('lastName')}
+                  >
+                    Apellido{sortMark('lastName')}
                   </th>
-                  <th className="px-3 py-2">
-                    {encabezadoOrdenable('firstName', 'Nombre')}
+                  <th
+                    className="px-3 py-2 cursor-pointer"
+                    onClick={() => ordenarPor('firstName')}
+                  >
+                    Nombre{sortMark('firstName')}
                   </th>
-                  <th className="px-3 py-2">
-                    {encabezadoOrdenable('documentNumber', 'DNI')}
+                  <th
+                    className="px-3 py-2 cursor-pointer"
+                    onClick={() => ordenarPor('documentNumber')}
+                  >
+                    DNI{sortMark('documentNumber')}
                   </th>
-                  <th className="px-3 py-2">
-                    {encabezadoOrdenable('memberNumber', 'N° socio')}
+                  <th
+                    className="px-3 py-2 cursor-pointer"
+                    onClick={() => ordenarPor('memberNumber')}
+                  >
+                    Socio{sortMark('memberNumber')}
                   </th>
-                  <th className="px-3 py-2">
-                    {encabezadoOrdenable('category', 'Cat. social')}
+                  <th
+                    className="px-3 py-2 cursor-pointer"
+                    onClick={() => ordenarPor('category')}
+                  >
+                    Cat.{sortMark('category')}
                   </th>
-                  <th className="px-3 py-2">
-                    {encabezadoOrdenable('deporte', 'Deporte')}
+                  <th
+                    className="px-3 py-2 cursor-pointer"
+                    onClick={() => ordenarPor('deporte')}
+                  >
+                    Deporte{sortMark('deporte')}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {personasFiltradas.map((p) => (
                   <tr
-                    key={`${p.id}-${p.deporte || ''}-${p.categoriaDeportiva || ''}`}
+                    key={p.id}
                     className="border-t hover:bg-blue-50 cursor-pointer"
-                    onClick={() => abrirDetalle(p.id)}
+                    onClick={() => void abrirDetalle(p.id)}
                   >
                     <td className="px-3 py-2 font-medium">{p.lastName}</td>
                     <td className="px-3 py-2">{p.firstName}</td>
                     <td className="px-3 py-2">{p.documentNumber}</td>
-                    <td className="px-3 py-2">{p.memberNumber ?? '—'}</td>
+                    <td className="px-3 py-2">{p.memberNumber || '—'}</td>
                     <td className="px-3 py-2">
-                      {p.category ? (
-                        p.category
-                      ) : (
-                        <span className="text-gray-400">No socio</span>
-                      )}
-                      {p.beca ? (
-                        <span className="ml-1 text-xs text-amber-700">· beca</span>
-                      ) : null}
+                      {p.memberNumber
+                        ? p.deporte
+                          ? `Dep. ${p.categoriaDeportiva || ''}`
+                          : p.category || '—'
+                        : 'No socio'}
                     </td>
                     <td className="px-3 py-2">
                       {p.deporte
@@ -711,330 +614,261 @@ function PersonasPage() {
         )}
       </div>
 
+      {/* Modal ficha */}
       {detalleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={cerrarDetalle}
-            aria-hidden
-          />
-          <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-xl border">
-            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">Ficha de persona</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 space-y-3">
+            <div className="flex justify-between items-start gap-2">
+              <h3 className="text-lg font-bold text-gray-800">Ficha</h3>
               <button
                 type="button"
                 onClick={cerrarDetalle}
-                className="text-gray-500 hover:text-gray-800 text-sm px-2 py-1"
+                className="text-gray-500 hover:text-gray-800"
               >
-                Cerrar
+                ✕
               </button>
             </div>
-            <div className="p-4 space-y-3 text-sm">
-              {detalleLoading && <p className="text-gray-500">Cargando...</p>}
-              {!detalleLoading && detalle && (
-                <>
-                  <div>
-                    <p className="text-lg font-semibold text-gray-900">
-                      {detalle.persona.lastName}, {detalle.persona.firstName}
-                    </p>
-                    <p className="text-gray-600">
-                      DNI {detalle.persona.documentNumber}
-                      {detalle.membresia?.memberNumber
-                        ? ` · Socio n° ${detalle.membresia.memberNumber}`
-                        : ' · No socio'}
-                    </p>
-                  </div>
+            {detalleLoading || !detalle ? (
+              <p className="text-sm text-gray-500">Cargando...</p>
+            ) : (
+              <>
+                <dl className="grid grid-cols-2 gap-2 text-sm">
+                  <dt className="text-gray-500">Apellido y nombre</dt>
+                  <dd className="font-medium">
+                    {detalle.persona.lastName}, {detalle.persona.firstName}
+                  </dd>
+                  <dt className="text-gray-500">DNI</dt>
+                  <dd>{detalle.persona.documentNumber}</dd>
+                  <dt className="text-gray-500">Nacimiento</dt>
+                  <dd>{formatFechaAR(detalle.persona.birthDate)}</dd>
+                  <dt className="text-gray-500">Domicilio</dt>
+                  <dd>{detalle.persona.address || '—'}</dd>
+                  <dt className="text-gray-500">Domicilio cobro</dt>
+                  <dd>{detalle.persona.addressCobro || '—'}</dd>
+                  <dt className="text-gray-500">Celular</dt>
+                  <dd>{detalle.persona.phoneAlt || '—'}</dd>
+                  <dt className="text-gray-500">Teléfono</dt>
+                  <dd>{detalle.persona.phone || '—'}</dd>
+                  <dt className="text-gray-500">Email</dt>
+                  <dd>{detalle.persona.email || '—'}</dd>
+                  <dt className="text-gray-500">Débito automático</dt>
+                  <dd>{detalle.persona.tieneDebitoAutomatico ? 'Sí' : 'No'}</dd>
+                  <dt className="text-gray-500">Beca</dt>
+                  <dd>{detalle.persona.beca ? 'Sí' : 'No'}</dd>
+                  <dt className="text-gray-500">N° socio</dt>
+                  <dd>{detalle.membresia?.memberNumber || '—'}</dd>
+                  <dt className="text-gray-500">Categoría social</dt>
+                  <dd>{detalle.membresia?.category || '—'}</dd>
+                  <dt className="text-gray-500">Subcat. social</dt>
+                  <dd>
+                    {detalle.membresia
+                      ? labelSubSocial(detalle.membresia.subcategoriaCuota)
+                      : '—'}
+                  </dd>
+                  <dt className="text-gray-500">Estado membresía</dt>
+                  <dd>{detalle.membresia?.status || 'No socio'}</dd>
+                  <dt className="text-gray-500">Deporte</dt>
+                  <dd>
+                    {detalle.inscripcion
+                      ? `${detalle.inscripcion.deporte || '—'} · ${
+                          detalle.inscripcion.categoriaDeportiva || '—'
+                        }`
+                      : '—'}
+                  </dd>
+                  <dt className="text-gray-500">Subcat. deporte</dt>
+                  <dd>
+                    {detalle.inscripcion
+                      ? labelSubDeporte(detalle.inscripcion.subcategoriaCuota)
+                      : '—'}
+                  </dd>
+                </dl>
 
-                  <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Datos personales
-                    </p>
-                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                      <div>
-                        <dt className="text-xs text-gray-500">Nacimiento</dt>
-                        <dd>{formatFechaAR(detalle.persona.birthDate)}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-gray-500">Beca</dt>
-                        <dd>{detalle.persona.beca ? 'Sí (cuota $0)' : 'No'}</dd>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs text-gray-500">Domicilio</dt>
-                        <dd>{detalle.persona.address || '—'}</dd>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs text-gray-500">Domicilio cobro</dt>
-                        <dd>
-                          {detalle.persona.addressCobro ||
-                            detalle.persona.address ||
-                            '—'}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-gray-500">Celular</dt>
-                        <dd>{detalle.persona.phoneAlt || '—'}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-gray-500">Tel. fijo</dt>
-                        <dd>{detalle.persona.phone || '—'}</dd>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs text-gray-500">Email</dt>
-                        <dd>{detalle.persona.email || '—'}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-gray-500">Débito automático</dt>
-                        <dd>
-                          {detalle.persona.tieneDebitoAutomatico ? 'Sí' : 'No'}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={editarDesdeDetalle}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cerrarDetalle}
+                    className="border px-4 py-2 rounded-lg text-sm"
+                  >
+                    Cerrar
+                  </button>
+                </div>
 
-                  <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Situación de socio
+                {detalle.membresia && (
+                  <div className="border border-red-100 bg-red-50 rounded-lg p-3 space-y-2 mt-2">
+                    <h4 className="text-sm font-semibold text-red-800">
+                      Baja de socio
+                    </h4>
+                    <p className="text-xs text-gray-600">
+                      Cierra la membresía y las inscripciones deportivas. No
+                      entrará en generaciones nuevas de cuotas.
                     </p>
-                    {detalle.membresia ? (
-                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                        <div>
-                          <dt className="text-xs text-gray-500">N° de socio</dt>
-                          <dd>{detalle.membresia.memberNumber ?? '—'}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-gray-500">Categoría social</dt>
-                          <dd className="capitalize">
-                            {detalle.membresia.category ?? '—'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-gray-500">
-                            Subcategoría cuota
-                          </dt>
-                          <dd>
-                            {labelSubSocial(detalle.membresia.subcategoriaCuota)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-gray-500">Alta desde</dt>
-                          <dd>{formatFechaAR(detalle.membresia.startDate)}</dd>
-                        </div>
-                      </dl>
-                    ) : (
-                      <p className="text-gray-600">No es socio del club.</p>
-                    )}
+                    <div className="flex flex-wrap gap-2 items-end">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Fecha de baja
+                        </label>
+                        <input
+                          type="date"
+                          value={fechaBaja}
+                          onChange={(e) => setFechaBaja(e.target.value)}
+                          className="border rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-[160px]">
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Motivo
+                        </label>
+                        <input
+                          value={motivoBaja}
+                          onChange={(e) => setMotivoBaja(e.target.value)}
+                          className="border rounded-lg px-3 py-2 text-sm w-full"
+                          placeholder="Opcional"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleBaja(detalle.persona.id)}
+                        className="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded-lg"
+                      >
+                        Registrar baja
+                      </button>
+                    </div>
                   </div>
-
-                  <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Actividad deportiva
-                    </p>
-                    {detalle.inscripcion ? (
-                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                        <div>
-                          <dt className="text-xs text-gray-500">Deporte</dt>
-                          <dd>{detalle.inscripcion.deporte ?? '—'}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-gray-500">
-                            Categoría deportiva
-                          </dt>
-                          <dd>
-                            {detalle.inscripcion.categoriaDeportiva ?? '—'}
-                          </dd>
-                        </div>
-                        <div className="sm:col-span-2">
-                          <dt className="text-xs text-gray-500">
-                            Subcategoría cuota deportiva
-                          </dt>
-                          <dd>
-                            {labelSubDeporte(
-                              detalle.inscripcion.subcategoriaCuota,
-                            )}
-                          </dd>
-                        </div>
-                      </dl>
-                    ) : (
-                      <p className="text-gray-600">
-                        Sin inscripción deportiva activa.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-3 border-t">
-                    <button
-                      type="button"
-                      onClick={editarDesdeDetalle}
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cerrarDetalle}
-                      className="border text-sm px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-50"
-                    >
-                      Cerrar
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
 
+      {/* Modal alta / edición */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={cerrarModal}
-            aria-hidden
-          />
-          <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-xl border">
-            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">
-                {editId != null ? `Editar persona #${editId}` : 'Nueva persona'}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-bold text-gray-800">
+                {editId != null ? 'Editar persona' : 'Nueva persona'}
               </h3>
-              <button
-                type="button"
-                onClick={cerrarModal}
-                className="text-gray-500 hover:text-gray-800 text-sm px-2 py-1"
-              >
-                Cerrar
+              <button type="button" onClick={cerrarModal}>
+                ✕
               </button>
             </div>
-
-            <form onSubmit={handleGuardar} className="p-4 space-y-3">
-              {error && (
-                <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
-                  {error}
-                </div>
-              )}
-
-              {editId != null && memberNumberShow && (
-                <p className="text-sm text-gray-600">
-                  N° socio: <strong>{memberNumberShow}</strong>
-                </p>
-              )}
-              {editId == null && esSocio && proximoNumero != null && (
-                <p className="text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-2">
-                  Se asignará automáticamente el n° de socio{' '}
-                  <strong>{proximoNumero}</strong>
-                </p>
-              )}
-
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+            {error && (
+              <div className="mb-3 p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded text-sm">
+                {error}
+              </div>
+            )}
+            <form onSubmit={handleGuardar} className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
                     DNI *
                   </label>
                   <input
                     value={documentNumber}
                     onChange={(e) =>
-                      setDocumentNumber(
-                        e.target.value.replace(/\D/g, '').slice(0, 8),
-                      )
+                      setDocumentNumber(e.target.value.replace(/\D/g, ''))
                     }
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    required
-                    inputMode="numeric"
-                    minLength={7}
-                    maxLength={8}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Fecha nacimiento *
-                  </label>
-                  <input
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                  <label className="block text-xs text-gray-600 mb-1">
                     Apellido *
                   </label>
                   <input
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                  <label className="block text-xs text-gray-600 mb-1">
                     Nombre *
                   </label>
                   <input
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
                     required
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Fecha de nacimiento *
+                  </label>
+                  <input
+                    type="date"
+                    value={birthDate}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
+                    required
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
                     Domicilio *
                   </label>
                   <input
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
                     required
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
                     Domicilio de cobro
                   </label>
                   <input
                     value={addressCobro}
                     onChange={(e) => setAddressCobro(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Tel. fijo
-                  </label>
-                  <input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                  <label className="block text-xs text-gray-600 mb-1">
                     Celular *
                   </label>
                   <input
                     value={phoneAlt}
                     onChange={(e) =>
-                      setPhoneAlt(e.target.value.replace(/\D/g, '').slice(0, 13))
+                      setPhoneAlt(e.target.value.replace(/\D/g, ''))
                     }
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
                     required
-                    inputMode="numeric"
-                    placeholder="Ej. 2324123456"
-                    minLength={10}
-                    maxLength={13}
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Teléfono
+                  </label>
+                  <input
+                    value={phone}
+                    onChange={(e) =>
+                      setPhone(e.target.value.replace(/\D/g, ''))
+                    }
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
                     Email
                   </label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    placeholder="opcional"
+                    className="border rounded-lg px-3 py-2 text-sm w-full"
                   />
                 </div>
               </div>
@@ -1045,21 +879,20 @@ function PersonasPage() {
                   checked={tieneDebito}
                   onChange={(e) => setTieneDebito(e.target.checked)}
                 />
-                Débito automático (descuento)
+                Débito automático
               </label>
-
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={beca}
                   onChange={(e) => setBeca(e.target.checked)}
                 />
-                Beca (cuota generada en $0)
+                Beca (cuota $0)
               </label>
 
               {editId == null && (
-                <div className="border-t pt-3 space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
+                <>
+                  <label className="flex items-center gap-2 text-sm font-medium">
                     <input
                       type="checkbox"
                       checked={esSocio}
@@ -1068,70 +901,64 @@ function PersonasPage() {
                         if (!e.target.checked) setEsDeportista(false)
                       }}
                     />
-                    Es socio del club
+                    Es socio
                   </label>
-
                   {esSocio && (
-                    <>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={esDeportista}
-                          onChange={(e) => setEsDeportista(e.target.checked)}
-                        />
-                        Practica deporte
-                      </label>
-
-                      {!esDeportista && (
-                        <>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Categoría social
-                            </label>
-                            <select
-                              value={category}
-                              onChange={(e) =>
-                                setCategory(
-                                  e.target.value as
-                                    | 'menor'
-                                    | 'cadete'
-                                    | 'activo'
-                                    | 'vitalicio',
-                                )
-                              }
-                              className="w-full border rounded-lg px-3 py-2 text-sm"
-                              required
-                            >
-                              <option value="menor">Menor</option>
-                              <option value="cadete">Cadete</option>
-                              <option value="activo">Activo</option>
-                              <option value="vitalicio">Vitalicio</option>
-                            </select>
-                          </div>
-                          {(category === 'cadete' || category === 'activo') &&
-                            selectSubSocial}
-                        </>
-                      )}
-
-                      {esDeportista && (
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                          <span className="text-gray-600">
-                            Categoría social (automática):{' '}
-                          </span>
-                          <strong>{categoriaSocialPorEdad(birthDate)}</strong>
-                        </div>
-                      )}
-
-                      {esDeportista && bloqueDeporteUI}
-                    </>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={esDeportista}
+                        onChange={(e) => setEsDeportista(e.target.checked)}
+                      />
+                      Socio deportista
+                    </label>
                   )}
-                </div>
+                  {esSocio && !esDeportista && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Categoría social
+                        </label>
+                        <select
+                          value={category}
+                          onChange={(e) =>
+                            setCategory(e.target.value as typeof category)
+                          }
+                          className="border rounded-lg px-3 py-2 text-sm w-full"
+                        >
+                          <option value="menor">Menor</option>
+                          <option value="cadete">Cadete</option>
+                          <option value="activo">Activo</option>
+                          <option value="vitalicio">Vitalicio</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Subcategoría
+                        </label>
+                        <select
+                          value={subcategoriaCuota}
+                          onChange={(e) =>
+                            setSubcategoriaCuota(
+                              e.target.value as typeof subcategoriaCuota,
+                            )
+                          }
+                          className="border rounded-lg px-3 py-2 text-sm w-full"
+                        >
+                          <option value="pleno">Pleno</option>
+                          <option value="3_familiar">3.º familiar</option>
+                          <option value="4_familiar">4.º o más</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {editId != null && (
-                <div className="border-t pt-3 space-y-2">
+                <>
                   {!esSocio && (
-                    <label className="flex items-center gap-2 text-sm">
+                    <label className="flex items-center gap-2 text-sm font-medium">
                       <input
                         type="checkbox"
                         checked={hacerSocio}
@@ -1140,96 +967,153 @@ function PersonasPage() {
                       Dar de alta como socio
                     </label>
                   )}
-
-                  {(esSocio || hacerSocio) &&
-                    !esDeportista &&
-                    !agregarDeporte && (
-                      <>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Categoría social
-                          </label>
-                          <select
-                            value={category}
-                            onChange={(e) =>
-                              setCategory(
-                                e.target.value as
-                                  | 'menor'
-                                  | 'cadete'
-                                  | 'activo'
-                                  | 'vitalicio',
-                              )
-                            }
-                            className="w-full border rounded-lg px-3 py-2 text-sm"
-                          >
-                            <option value="menor">Menor</option>
-                            <option value="cadete">Cadete</option>
-                            <option value="activo">Activo</option>
-                            <option value="vitalicio">Vitalicio</option>
-                          </select>
-                        </div>
-                        {(category === 'cadete' || category === 'activo') &&
-                          selectSubSocial}
-                      </>
-                    )}
-
-                  {esSocio && esDeportista && (
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={quitarDeporte}
-                        onChange={(e) => {
-                          setQuitarDeporte(e.target.checked)
-                          if (e.target.checked) setAgregarDeporte(false)
-                        }}
-                      />
-                      Quitar deporte (pasar a socio social)
-                    </label>
+                  {esSocio && (
+                    <p className="text-xs text-gray-500">
+                      N° socio: <strong>{memberNumberShow || '—'}</strong>
+                      {esDeportista ? ' · Deportista' : ' · No deportista'}
+                    </p>
                   )}
-
                   {esSocio && !esDeportista && (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={agregarDeporte}
-                        onChange={(e) => {
-                          setAgregarDeporte(e.target.checked)
-                          if (e.target.checked) setQuitarDeporte(false)
-                        }}
+                        onChange={(e) => setAgregarDeporte(e.target.checked)}
                       />
                       Agregar deporte
                     </label>
                   )}
-
-                  {mostrarBloqueDeporte && (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                      <span className="text-gray-600">
-                        Categoría social (automática):{' '}
-                      </span>
-                      <strong>{categoriaSocialPorEdad(birthDate)}</strong>
+                  {esDeportista && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={quitarDeporte}
+                        onChange={(e) => setQuitarDeporte(e.target.checked)}
+                      />
+                      Quitar deporte (pasar a socio social)
+                    </label>
+                  )}
+                  {esSocio && !mostrarBloqueDeporte && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Categoría social
+                        </label>
+                        <select
+                          value={category}
+                          onChange={(e) =>
+                            setCategory(e.target.value as typeof category)
+                          }
+                          className="border rounded-lg px-3 py-2 text-sm w-full"
+                        >
+                          <option value="menor">Menor</option>
+                          <option value="cadete">Cadete</option>
+                          <option value="activo">Activo</option>
+                          <option value="vitalicio">Vitalicio</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Subcategoría
+                        </label>
+                        <select
+                          value={subcategoriaCuota}
+                          onChange={(e) =>
+                            setSubcategoriaCuota(
+                              e.target.value as typeof subcategoriaCuota,
+                            )
+                          }
+                          className="border rounded-lg px-3 py-2 text-sm w-full"
+                        >
+                          <option value="pleno">Pleno</option>
+                          <option value="3_familiar">3.º familiar</option>
+                          <option value="4_familiar">4.º o más</option>
+                        </select>
+                      </div>
                     </div>
                   )}
+                </>
+              )}
 
-                  {mostrarBloqueDeporte && bloqueDeporteUI}
+              {mostrarBloqueDeporte && (
+                <div className="border rounded-lg p-3 space-y-2 bg-blue-50/50">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Deporte
+                    </label>
+                    <select
+                      value={disciplinaId}
+                      onChange={(e) =>
+                        setDisciplinaId(
+                          e.target.value === ''
+                            ? ''
+                            : Number(e.target.value),
+                        )
+                      }
+                      className="border rounded-lg px-3 py-2 text-sm w-full"
+                      required
+                    >
+                      <option value="">Seleccionar...</option>
+                      {disciplinas.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Subcategoría deporte
+                    </label>
+                    <select
+                      value={subcategoriaCuotaDeporte}
+                      onChange={(e) =>
+                        setSubcategoriaCuotaDeporte(
+                          e.target.value as typeof subcategoriaCuotaDeporte,
+                        )
+                      }
+                      className="border rounded-lg px-3 py-2 text-sm w-full"
+                    >
+                      <option value="pleno">Deportista pleno</option>
+                      <option value="2_hermano">2.º hermano</option>
+                      <option value="3_hermano">3.º hermano</option>
+                    </select>
+                  </div>
+                  {birthDate && (
+                    <p className="text-xs text-gray-600">
+                      Categoría social (automática):{' '}
+                      <strong>{categoriaSocialPorEdad(birthDate)}</strong>
+                    </p>
+                  )}
+                  {categoriaLoading && (
+                    <p className="text-xs text-gray-500">
+                      Calculando categoría deportiva...
+                    </p>
+                  )}
+                  {categoriaError && (
+                    <p className="text-xs text-red-600">{categoriaError}</p>
+                  )}
+                  {categoriaAutomatica && (
+                    <p className="text-xs text-green-700">
+                      Categoría deportiva:{' '}
+                      <strong>{categoriaAutomatica.nombre}</strong>
+                    </p>
+                  )}
                 </div>
               )}
 
-              <div className="flex gap-2 pt-2 border-t">
+              <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
                   disabled={saving}
                   className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
                 >
-                  {saving
-                    ? 'Guardando...'
-                    : editId != null
-                      ? 'Actualizar'
-                      : 'Guardar'}
+                  {saving ? 'Guardando...' : 'Guardar'}
                 </button>
                 <button
                   type="button"
                   onClick={cerrarModal}
-                  className="border text-sm px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="border px-4 py-2 rounded-lg text-sm"
                 >
                   Cancelar
                 </button>

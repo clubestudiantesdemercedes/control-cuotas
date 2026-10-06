@@ -596,3 +596,79 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       return { ok: false as const, error: 'No se pudo actualizar' }
     }
   })
+
+  export const darBajaMembresia = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (data: {
+      personId: number
+      fechaBaja: string // YYYY-MM-DD
+      motivo?: string
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    await requireUser()
+    const { db } = await import('../../db')
+    const { memberships, inscripcionesDeportivas, people } = await import(
+      '../../db/schema'
+    )
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.fechaBaja)) {
+      return { ok: false as const, error: 'Fecha de baja inválida' }
+    }
+
+    const [mem] = await db
+      .select()
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.personId, data.personId),
+          eq(memberships.status, 'activo'),
+          isNull(memberships.endDate),
+        ),
+      )
+      .limit(1)
+
+    if (!mem) {
+      return {
+        ok: false as const,
+        error: 'No hay membresía activa para dar de baja',
+      }
+    }
+
+    await db
+      .update(memberships)
+      .set({
+        status: 'baja',
+        endDate: data.fechaBaja,
+        endReason: data.motivo?.trim() || 'Baja de socio',
+        updatedAt: new Date(),
+      })
+      .where(eq(memberships.id, mem.id))
+
+    await db
+      .update(inscripcionesDeportivas)
+      .set({
+        activa: false,
+        fechaFin: data.fechaBaja,
+      })
+      .where(
+        and(
+          eq(inscripcionesDeportivas.personId, data.personId),
+          eq(inscripcionesDeportivas.activa, true),
+        ),
+      )
+
+    await db
+      .update(people)
+      .set({
+        status: 'inactivo',
+        updatedAt: new Date(),
+      })
+      .where(eq(people.id, data.personId))
+
+    return {
+      ok: true as const,
+      mensaje: `Baja registrada al ${data.fechaBaja}`,
+      membershipId: mem.id,
+    }
+  })

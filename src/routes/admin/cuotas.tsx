@@ -382,6 +382,44 @@ function CuotasPage() {
     }
   }
 
+    const handleExportarListado = async () => {
+    if (!cuotas.length) {
+      setError('No hay cuotas para exportar con este filtro')
+      return
+    }
+    setError('')
+    try {
+      const XLSX = await import('xlsx')
+      const rows = cuotas.map((c) => ({
+        Id: c.id,
+        Periodo: c.periodo,
+        DNI: c.dni ?? '',
+        Nro_Socio: c.nroSocio ?? '',
+        Nombre: c.nombreCompleto ?? '',
+        Tipo_cuota: c.tipoCuota ?? '',
+        Subcategoria: c.subcategoriaCuota ?? '',
+        Disciplina: c.disciplinaNombre ?? '',
+        Categoria_deportiva: c.categoriaDeportivaNombre ?? '',
+        Concepto: c.concepto ?? '',
+        Monto_original: Number(c.montoOriginal),
+        Monto_final: Number(c.montoFinal),
+        Vencimiento: c.fechaVencimiento ?? '',
+        Estado: c.estado ?? '',
+      }))
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, periodoLista || 'Cuotas')
+      XLSX.writeFile(
+        wb,
+        `cuotas-${periodoLista || 'periodo'}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      )
+      setMsg(`Exportadas ${rows.length} cuotas`)
+    } catch (e) {
+      console.error(e)
+      setError('Error al exportar Excel')
+    }
+  }
+
   return (
     <div className="max-w-5xl space-y-6">
       <div>
@@ -475,6 +513,14 @@ function CuotasPage() {
               className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
             >
               Buscar
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportarListado()}
+              disabled={!cuotas.length}
+              className="bg-gray-700 hover:bg-gray-800 disabled:bg-gray-300 text-white text-sm px-4 py-2 rounded-lg"
+            >
+              Descargar Excel
             </button>
             <button
               type="button"

@@ -1,28 +1,19 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm'
-import { db } from '../../db'
-import {
-  cuotasGeneradas,
-  mediosPago,
-  memberships,
-  pagoCuotas,
-  pagos,
-  people,
-} from '../../db/schema'
 import { requireUser } from './auth.server'
 
 function normalizarBusqueda(valor: string) {
   return valor.trim().replace(/\D/g, '')
 }
 
-/**
- * Busca una persona por DNI o número de socio
- * y devuelve sus cuotas pendientes.
- */
 export const buscarPersonaParaPago = createServerFn({ method: 'GET' })
   .inputValidator((data: { busqueda: string }) => data)
   .handler(async ({ data }) => {
     await requireUser()
+    const { db } = await import('../../db')
+    const { people, memberships, cuotasGeneradas } = await import(
+      '../../db/schema'
+    )
 
     const q = normalizarBusqueda(data.busqueda)
 
@@ -51,10 +42,7 @@ export const buscarPersonaParaPago = createServerFn({ method: 'GET' })
         ),
       )
       .where(
-        or(
-          eq(people.documentNumber, q),
-          eq(memberships.memberNumber, q),
-        ),
+        or(eq(people.documentNumber, q), eq(memberships.memberNumber, q)),
       )
       .limit(10)
 
@@ -91,10 +79,7 @@ export const buscarPersonaParaPago = createServerFn({ method: 'GET' })
           eq(cuotasGeneradas.estado, 'pendiente'),
         ),
       )
-      .orderBy(
-        asc(cuotasGeneradas.periodo),
-        asc(cuotasGeneradas.id),
-      )
+      .orderBy(asc(cuotasGeneradas.periodo), asc(cuotasGeneradas.id))
 
     return {
       ok: true as const,
@@ -104,53 +89,18 @@ export const buscarPersonaParaPago = createServerFn({ method: 'GET' })
     }
   })
 
-/**
- * Devuelve los medios de pago activos.
- *
- * Si todavía no existe ninguno, crea los tres básicos.
- */
 export const listarMediosPagoActivos = createServerFn({
   method: 'GET',
 }).handler(async () => {
   await requireUser()
+  const { db } = await import('../../db')
+  const { mediosPago } = await import('../../db/schema')
 
-  let medios = await db
+  const medios = await db
     .select()
     .from(mediosPago)
     .where(eq(mediosPago.activa, true))
-    .orderBy(
-      asc(mediosPago.orden),
-      asc(mediosPago.nombre),
-    )
-
-  if (medios.length === 0) {
-    await db.insert(mediosPago).values([
-      {
-        nombre: 'Efectivo',
-        tipo: 'efectivo',
-        orden: 1,
-      },
-      {
-        nombre: 'Transferencia',
-        tipo: 'transferencia',
-        orden: 2,
-      },
-      {
-        nombre: 'Mercado Pago',
-        tipo: 'mercado_pago',
-        orden: 3,
-      },
-    ])
-
-    medios = await db
-      .select()
-      .from(mediosPago)
-      .where(eq(mediosPago.activa, true))
-      .orderBy(
-        asc(mediosPago.orden),
-        asc(mediosPago.nombre),
-      )
-  }
+    .orderBy(asc(mediosPago.orden), asc(mediosPago.nombre))
 
   return {
     ok: true as const,
@@ -158,12 +108,6 @@ export const listarMediosPagoActivos = createServerFn({
   }
 })
 
-/**
- * Registra un pago individual e imputa una o varias cuotas completas.
- *
- * No admite pagos parciales.
- * Una misma operación puede cancelar varios períodos.
- */
 export const registrarPagoIndividual = createServerFn({
   method: 'POST',
 })
@@ -179,6 +123,14 @@ export const registrarPagoIndividual = createServerFn({
   )
   .handler(async ({ data }) => {
     const user = await requireUser()
+    const { db } = await import('../../db')
+    const {
+      people,
+      mediosPago,
+      cuotasGeneradas,
+      pagos,
+      pagoCuotas,
+    } = await import('../../db/schema')
 
     if (!Number.isInteger(data.personId) || data.personId <= 0) {
       return {
@@ -188,9 +140,7 @@ export const registrarPagoIndividual = createServerFn({
     }
 
     const cuotaIds = [
-      ...new Set(
-        data.cuotaIds.filter((id) => Number.isInteger(id)),
-      ),
+      ...new Set(data.cuotaIds.filter((id) => Number.isInteger(id))),
     ]
 
     if (cuotaIds.length === 0) {
@@ -208,9 +158,7 @@ export const registrarPagoIndividual = createServerFn({
     }
 
     const [persona] = await db
-      .select({
-        id: people.id,
-      })
+      .select({ id: people.id })
       .from(people)
       .where(eq(people.id, data.personId))
       .limit(1)
@@ -223,9 +171,7 @@ export const registrarPagoIndividual = createServerFn({
     }
 
     const [medio] = await db
-      .select({
-        id: mediosPago.id,
-      })
+      .select({ id: mediosPago.id })
       .from(mediosPago)
       .where(
         and(
@@ -288,12 +234,7 @@ export const registrarPagoIndividual = createServerFn({
       ...new Set(cuotas.map((cuota) => cuota.periodo)),
     ].sort()
 
-    // Si es un solo período lo guardamos también en pagos.periodo.
-    // Si son varios, queda NULL porque la relación real está
-    // en pagoCuotas.
-    const periodo = periodos.length === 1
-      ? periodos[0]
-      : null
+    const periodo = periodos.length === 1 ? periodos[0] : null
 
     const resultado = await db.transaction(async (tx) => {
       const [pago] = await tx

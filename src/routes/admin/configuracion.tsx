@@ -5,6 +5,12 @@ import {
   setUltimoNumeroSocio,
 } from '../../server/config.functions'
 import { exportarPadron, importarPadron } from '../../server/padron.functions'
+import {
+  listarMediosPagoAdmin,
+  seedMediosPagoClub,
+  crearMedioPago,
+  actualizarMedioPago,
+} from '../../server/medios-pago.functions'
 
 export const Route = createFileRoute('/admin/configuracion')({
   component: ConfiguracionPage,
@@ -23,6 +29,11 @@ function ConfiguracionPage() {
     { fila: number; mensaje: string }[]
   >([])
 
+  const [medios, setMedios] = useState<any[]>([])
+  const [tiposMedio, setTiposMedio] = useState<string[]>([])
+  const [nuevoNombre, setNuevoNombre] = useState('')
+  const [nuevoTipo, setNuevoTipo] = useState('transferencia')
+
   const cargar = async () => {
     setError('')
     const res = await getProximoNumeroSocio()
@@ -32,8 +43,21 @@ function ConfiguracionPage() {
     }
   }
 
+  const cargarMedios = async () => {
+    try {
+      const res = await listarMediosPagoAdmin()
+      if (res.ok) {
+        setMedios(res.medios)
+        setTiposMedio([...res.tipos])
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   useEffect(() => {
     cargar()
+    cargarMedios()
   }, [])
 
   const guardar = async (e: React.FormEvent) => {
@@ -160,6 +184,65 @@ function ConfiguracionPage() {
     )
   }
 
+  const handleSeedMedios = async () => {
+    setError('')
+    setMsg('')
+    try {
+      const res = await seedMediosPagoClub()
+      if (!res.ok) setError(res.error)
+      else {
+        setMsg(`Se cargaron ${res.cantidad} medios de pago del club`)
+        await cargarMedios()
+      }
+    } catch (e) {
+      console.error(e)
+      setError('Error al cargar medios de pago')
+    }
+  }
+
+  const handleCrearMedio = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setMsg('')
+    try {
+      const res = await crearMedioPago({
+        data: { nombre: nuevoNombre, tipo: nuevoTipo },
+      })
+      if (!res.ok) setError(res.error)
+      else {
+        setMsg('Medio de pago creado')
+        setNuevoNombre('')
+        await cargarMedios()
+      }
+    } catch (err) {
+      console.error(err)
+      setError('Error al crear medio de pago')
+    }
+  }
+
+  const handleToggleActiva = async (m: any) => {
+    setError('')
+    try {
+      const res = await actualizarMedioPago({
+        data: {
+          id: m.id,
+          nombre: m.nombre,
+          tipo: m.tipo,
+          alias: m.alias || undefined,
+          cbu: m.cbu || undefined,
+          datosPago: m.datosPago || undefined,
+          orden: m.orden,
+          activa: !m.activa,
+        },
+      })
+      if (!res.ok) setError(res.error)
+      else await cargarMedios()
+    } catch (err) {
+      console.error(err)
+      setError('Error al actualizar medio de pago')
+    }
+  }
+
   return (
     <div className="max-w-2xl space-y-6">
       <div>
@@ -208,6 +291,109 @@ function ConfiguracionPage() {
           Guardar
         </button>
       </form>
+
+      <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+        <h3 className="font-semibold text-gray-800">Medios de pago</h3>
+        <p className="text-xs text-gray-500">
+          Efectivo, débito automático, transferencias por cuenta y Mercado
+          Pago. Solo los activos aparecen al registrar un pago.
+        </p>
+
+        {medios.length === 0 && (
+          <button
+            type="button"
+            onClick={handleSeedMedios}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
+          >
+            Cargar medios del club (primera vez)
+          </button>
+        )}
+
+        {medios.length > 0 && (
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-gray-600">
+                <tr>
+                  <th className="px-3 py-2">Nombre</th>
+                  <th className="px-3 py-2">Tipo</th>
+                  <th className="px-3 py-2">Orden</th>
+                  <th className="px-3 py-2">Estado</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {medios.map((m) => (
+                  <tr key={m.id} className="border-t">
+                    <td className="px-3 py-2 font-medium">{m.nombre}</td>
+                    <td className="px-3 py-2">{m.tipo}</td>
+                    <td className="px-3 py-2">{m.orden}</td>
+                    <td className="px-3 py-2">
+                      {m.activa ? (
+                        <span className="text-green-700">Activo</span>
+                      ) : (
+                        <span className="text-gray-400">Inactivo</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActiva(m)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        {m.activa ? 'Desactivar' : 'Activar'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form
+          onSubmit={handleCrearMedio}
+          className="flex flex-wrap gap-2 items-end border-t pt-3"
+        >
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Nombre</label>
+            <input
+              value={nuevoNombre}
+              onChange={(e) => setNuevoNombre(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm w-56"
+              placeholder="Ej. Transferencia — Cuenta General"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Tipo</label>
+            <select
+              value={nuevoTipo}
+              onChange={(e) => setNuevoTipo(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm"
+            >
+              {(tiposMedio.length
+                ? tiposMedio
+                : [
+                    'efectivo',
+                    'transferencia',
+                    'mercado_pago',
+                    'debito_automatico',
+                  ]
+              ).map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="submit"
+            className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg"
+          >
+            Agregar
+          </button>
+        </form>
+      </div>
 
       <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
         <h3 className="font-semibold text-gray-800">Exportar padrón</h3>

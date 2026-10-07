@@ -11,6 +11,23 @@ export const consultarPagosPorDni = createServerFn({ method: 'GET' })
       return { ok: false as const, error: 'Ingresá un DNI válido' }
     }
 
+    const [ultimaImportacion] = await db
+      .select({
+        createdAt: importBatches.createdAt,
+      })
+      .from(importBatches)
+      .orderBy(desc(importBatches.createdAt))
+      .limit(1)
+
+    const ultimaActualizacion = ultimaImportacion?.createdAt
+      ? new Intl.DateTimeFormat('es-AR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          timeZone: 'America/Argentina/Buenos_Aires',
+        }).format(ultimaImportacion.createdAt)
+      : null
+
     const pagos = await db
       .select({
         id: pagosImportados.id,
@@ -43,6 +60,7 @@ export const consultarPagosPorDni = createServerFn({ method: 'GET' })
           dni,
           nombre: `${persona.lastName}, ${persona.firstName}`,
           pagos: [],
+          ultimaActualizacion,
           mensaje: 'No hay pagos registrados para este DNI en el sistema.',
         }
       }
@@ -72,6 +90,7 @@ export const consultarPagosPorDni = createServerFn({ method: 'GET' })
       ok: true as const,
       dni,
       nombre: nombre || `DNI ${dni}`,
+      ultimaActualizacion,
       pagos: pagos.map((p) => ({
         id: p.id,
         fechaPago: p.fechaPago,

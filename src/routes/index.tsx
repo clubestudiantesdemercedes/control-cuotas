@@ -74,6 +74,13 @@ function PublicConsulta() {
               <strong>No indica deudas ni saldos pendientes.</strong>
             </p>
 
+            {resultado?.ultimaActualizacion && (
+              <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
+                <strong>Pagos actualizados al {resultado.ultimaActualizacion}.</strong>{' '}
+                Los pagos realizados después de esta fecha pueden no aparecer todavía en la consulta.
+              </div>
+            )}
+
             <form onSubmit={handleBuscar} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

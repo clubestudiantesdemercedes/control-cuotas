@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { eq, desc } from 'drizzle-orm'
 import { db } from '../../db'
-import { people, pagosImportados } from '../../db/schema'
+import { importBatches, people, pagosImportados } from '../../db/schema'
 
 export const consultarPagosPorDni = createServerFn({ method: 'GET' })
   .inputValidator((data: { dni: string }) => data)

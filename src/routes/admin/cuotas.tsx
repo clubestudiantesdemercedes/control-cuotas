@@ -112,17 +112,17 @@ function CuotasPage() {
   }
 
   useEffect(() => {
-    cargarPeriodos()
+    void cargarPeriodos()
   }, [])
 
   useEffect(() => {
     if (tab === 'listado' && periodoLista) {
-      cargarListado()
+      void cargarListado()
     }
   }, [tab, periodoLista, estadoFiltro])
 
   useEffect(() => {
-    ;(async () => {
+    void (async () => {
       setLoadingGen(true)
       try {
         const res = await datosParaGenerar()
@@ -305,7 +305,9 @@ function CuotasPage() {
       else {
         setMsg(
           `Generadas ${res.creadas}. Omitidas: ${res.omitidas}.` +
-            (res.errores?.length ? ` Errores: ${res.errores.length}` : ''),
+            (res.errores?.length
+              ? ` Errores: ${res.errores.join(' · ')}`
+              : ''),
         )
         setPreview(null)
         await cargarPeriodos()
@@ -333,7 +335,12 @@ function CuotasPage() {
         },
       })
       if (!res.ok) setError(res.error)
-      else setPreviewInd(res)
+      else {
+        setPreviewInd(res)
+        if (res.errores?.length) {
+          setError(res.errores.join('\n'))
+        }
+      }
     } catch (e) {
       console.error(e)
       setError('Error en previsualización individual')
@@ -365,12 +372,17 @@ function CuotasPage() {
           reemplazarSiExiste: reemplazar,
         },
       })
-      if (!res.ok) setError((res as any).error || 'Error')
-      else {
+      if (!res.ok) {
+        setError((res as any).error || 'Error')
+      } else {
+        const avisos =
+          res.errores?.length > 0 ? res.errores.join(' · ') : ''
         setMsg(
-          `Individual OK: ${res.creadas} creadas, ${res.anuladas} anuladas.` +
-            (res.errores?.length ? ` Avisos: ${res.errores.length}` : ''),
+          `Individual OK: ${res.creadas} creadas, ${res.anuladas} anuladas.`,
         )
+        if (avisos) {
+          setError(avisos)
+        }
         setPreviewInd(null)
         await cargarPeriodos()
       }
@@ -382,7 +394,7 @@ function CuotasPage() {
     }
   }
 
-    const handleExportarListado = async () => {
+  const handleExportarListado = async () => {
     if (!cuotas.length) {
       setError('No hay cuotas para exportar con este filtro')
       return
@@ -420,6 +432,9 @@ function CuotasPage() {
     }
   }
 
+  const montoItem = (i: any) =>
+    Number(i.montoFinal ?? i.monto ?? 0)
+
   return (
     <div className="max-w-5xl space-y-6">
       <div>
@@ -440,7 +455,11 @@ function CuotasPage() {
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setTab(id)
+              setError('')
+              setMsg('')
+            }}
             className={`px-3 py-1.5 rounded-lg text-sm border ${
               tab === id
                 ? 'bg-blue-600 text-white border-blue-600'
@@ -453,7 +472,7 @@ function CuotasPage() {
       </div>
 
       {error && (
-        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm whitespace-pre-line">
           {error}
         </div>
       )}
@@ -509,7 +528,7 @@ function CuotasPage() {
             </div>
             <button
               type="button"
-              onClick={cargarListado}
+              onClick={() => void cargarListado()}
               className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
             >
               Buscar
@@ -524,7 +543,7 @@ function CuotasPage() {
             </button>
             <button
               type="button"
-              onClick={handleAnularMasiva}
+              onClick={() => void handleAnularMasiva()}
               disabled={working || !periodoLista}
               className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm px-4 py-2 rounded-lg"
             >
@@ -609,7 +628,7 @@ function CuotasPage() {
                             <button
                               type="button"
                               disabled={working}
-                              onClick={() => handleAnular(c.id)}
+                              onClick={() => void handleAnular(c.id)}
                               className="text-red-600 hover:underline text-xs"
                             >
                               Anular
@@ -689,7 +708,7 @@ function CuotasPage() {
             </div>
             <button
               type="button"
-              onClick={handlePreview}
+              onClick={() => void handlePreview()}
               disabled={working}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
             >
@@ -706,9 +725,14 @@ function CuotasPage() {
                   ${Number(preview.totalMonto).toLocaleString('es-AR')}
                 </strong>
               </p>
+              {preview.errores?.length > 0 && (
+                <p className="text-xs text-amber-700">
+                  Avisos: {preview.errores.join(' · ')}
+                </p>
+              )}
               <button
                 type="button"
-                onClick={handleConfirmar}
+                onClick={() => void handleConfirmar()}
                 disabled={working || preview.totalAGenerar === 0}
                 className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm px-4 py-2 rounded-lg"
               >
@@ -724,7 +748,8 @@ function CuotasPage() {
           <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
             <p className="text-sm text-gray-600">
               Generá según la situación actual, o solo anulá pendientes de un
-              período sin crear otra cuota.
+              período sin crear otra cuota. Si tiene débito, el monto final es
+              90% de la tarifa.
             </p>
             <div>
               <label className="block text-xs text-gray-600 mb-1">
@@ -815,7 +840,7 @@ function CuotasPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={handleSoloAnular}
+                  onClick={() => void handleSoloAnular()}
                   disabled={working || !busquedaInd.trim()}
                   className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm px-4 py-2 rounded-lg"
                 >
@@ -836,7 +861,7 @@ function CuotasPage() {
                 </label>
                 <button
                   type="button"
-                  onClick={handlePreviewInd}
+                  onClick={() => void handlePreviewInd()}
                   disabled={working || !busquedaInd.trim()}
                   className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
                 >
@@ -883,7 +908,13 @@ function CuotasPage() {
                       <span className="font-medium">{i.nombreCompleto}</span>
                       {' — '}
                       {i.concepto} · $
-                      {Number(i.monto).toLocaleString('es-AR')}
+                      {montoItem(i).toLocaleString('es-AR')}
+                      {i.tieneDebito ? (
+                        <span className="text-blue-700 text-xs">
+                          {' '}
+                          (débito -10%)
+                        </span>
+                      ) : null}
                       {i.cuotaExistenteId ? (
                         <span className="text-amber-700 text-xs">
                           {' '}
@@ -893,9 +924,14 @@ function CuotasPage() {
                     </li>
                   ))}
                 </ul>
+                {previewInd.errores?.length > 0 && (
+                  <p className="text-xs text-amber-700">
+                    {previewInd.errores.join(' · ')}
+                  </p>
+                )}
                 <button
                   type="button"
-                  onClick={handleConfirmarInd}
+                  onClick={() => void handleConfirmarInd()}
                   disabled={working || !(previewInd.items?.length > 0)}
                   className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm px-4 py-2 rounded-lg"
                 >

@@ -91,6 +91,7 @@ async function loadSocios(db: any, schema: any, personId?: number) {
       firstName: people.firstName,
       lastName: people.lastName,
       beca: people.beca,
+      tieneDebitoAutomatico: people.tieneDebitoAutomatico,
       membershipId: memberships.id,
       memberNumber: memberships.memberNumber,
       category: memberships.category,
@@ -148,11 +149,13 @@ type ItemPlan = {
   categoriaDeportivaId: number | null
   categoriaDeportivaNombre: string | null
   membershipId: number | null
-  monto: string
+  montoOriginal: string
+  montoFinal: string
   tarifarioId: number
   estado: 'pendiente' | 'pagada'
   concepto: string
   cuotaExistenteId: number | null
+  tieneDebito: boolean
 }
 
 async function planificar(params: {
@@ -180,11 +183,6 @@ async function planificar(params: {
     }
   }
 
-  const existQuery = db
-    .select()
-    .from(cuotasGeneradas)
-    .where(eq(cuotasGeneradas.periodo, periodo))
-
   const existentes = params.personId
     ? await db
         .select()
@@ -195,8 +193,12 @@ async function planificar(params: {
             eq(cuotasGeneradas.personId, params.personId),
           ),
         )
-    : await existQuery
+    : await db
+        .select()
+        .from(cuotasGeneradas)
+        .where(eq(cuotasGeneradas.periodo, periodo))
 
+  // Solo pendientes/pagadas bloquean; las anuladas son historial
   const mapExist = new Map<string, (typeof existentes)[0]>()
   for (const e of existentes) {
     if (e.estado === 'anulada') continue
@@ -270,11 +272,17 @@ async function planificar(params: {
       continue
     }
 
-    let monto = tarifa.monto
+    let montoOriginal = Number(tarifa.monto)
+    let montoFinal = montoOriginal
     let estado: 'pendiente' | 'pagada' = 'pendiente'
-    if (s.beca || Number(monto) === 0) {
-      monto = '0'
+    const tieneDebito = !!s.tieneDebitoAutomatico
+
+    if (s.beca || montoOriginal === 0) {
+      montoFinal = 0
       estado = 'pagada'
+    } else if (tieneDebito) {
+      montoFinal = Math.round(montoOriginal * 0.9 * 100) / 100
+      concepto = `${concepto} (débito -10%)`
     }
 
     const k = claveCuota(s.personId, tipo, discId)
@@ -292,12 +300,13 @@ async function planificar(params: {
       categoriaDeportivaId: catDepId,
       categoriaDeportivaNombre: catDepNombre,
       membershipId: s.membershipId,
-      monto,
+      montoOriginal: montoOriginal.toFixed(2),
+      montoFinal: montoFinal.toFixed(2),
       tarifarioId: tarifa.tarifarioId,
       estado,
       concepto,
-      cuotaExistenteId:
-        prev && prev.estado === 'pendiente' ? prev.id : null,
+      cuotaExistenteId: prev && prev.estado === 'pendiente' ? prev.id : null,
+      tieneDebito,
     })
   }
 
@@ -314,7 +323,9 @@ export const datosParaGenerar = createServerFn({ method: 'GET' }).handler(
   async () => {
     await requireUser()
     const { db } = await import('../../db')
-    const { disciplinas, categoriasDeportivas } = await import('../../db/schema')
+    const { disciplinas, categoriasDeportivas } = await import(
+      '../../db/schema'
+    )
 
     const discs = await db
       .select()
@@ -368,7 +379,7 @@ export const previsualizarGeneracion = createServerFn({ method: 'POST' })
         total: 0,
       }
       prev.personas += 1
-      prev.total += Number(i.monto)
+      prev.total += Number(i.montoFinal)
       resumenMap.set(label, prev)
     }
 
@@ -378,7 +389,7 @@ export const previsualizarGeneracion = createServerFn({ method: 'POST' })
       periodo: plan.periodo,
       totalAGenerar: aGenerar.length,
       omitidas: omitidas.length,
-      totalMonto: aGenerar.reduce((a, i) => a + Number(i.monto), 0),
+      totalMonto: aGenerar.reduce((a, i) => a + Number(i.montoFinal), 0),
       resumen: [...resumenMap.values()],
       errores: plan.errores,
     }
@@ -426,8 +437,8 @@ export const confirmarGeneracion = createServerFn({ method: 'POST' })
           categoriaDeportivaId: i.categoriaDeportivaId,
           periodo: plan.periodo,
           concepto: i.concepto,
-          montoOriginal: i.monto,
-          montoFinal: i.monto,
+          montoOriginal: i.montoOriginal,
+          montoFinal: i.montoFinal,
           fechaVencimiento: plan.vencimiento,
           estado: i.estado,
           dni: i.dni,
@@ -439,11 +450,14 @@ export const confirmarGeneracion = createServerFn({ method: 'POST' })
           tarifarioId: i.tarifarioId,
         })
         creadas++
-        totalMonto += Number(i.monto)
+        totalMonto += Number(i.montoFinal)
       } catch (err: any) {
         const msg = String(err?.message || err)
         if (msg.includes('unique') || msg.includes('duplicate')) {
           omitidas++
+          errores.push(
+            `${i.nombreCompleto}: ya existe cuota vigente (unique). Revisá índice parcial si hay anuladas.`,
+          )
         } else {
           console.error(err)
           errores.push(`${i.nombreCompleto}: error al insertar`)
@@ -538,7 +552,7 @@ export const previsualizarGeneracionIndividual = createServerFn({
       items: plan.items,
       aReemplazar: aReemplazar.length,
       errores: plan.errores,
-      totalMonto: plan.items.reduce((a, i) => a + Number(i.monto), 0),
+      totalMonto: plan.items.reduce((a, i) => a + Number(i.montoFinal), 0),
     }
   })
 
@@ -569,6 +583,7 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
     const errores = [...plan.errores]
 
     for (const i of plan.items) {
+      // 1) Si hay pendiente y se pidió reemplazo → anular (queda historial con motivo)
       if (i.cuotaExistenteId) {
         if (!data.reemplazarSiExiste) {
           errores.push(
@@ -590,20 +605,23 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
           continue
         }
 
-        await db
-          .update(cuotasGeneradas)
-          .set({
-            estado: 'anulada',
-            concepto:
-              `${exist?.concepto || i.concepto} · ANULADA: reemplazo generación individual`.slice(
-                0,
-                500,
-              ),
-          })
-          .where(eq(cuotasGeneradas.id, i.cuotaExistenteId))
-        anuladas++
+        if (exist && exist.estado === 'pendiente') {
+          await db
+            .update(cuotasGeneradas)
+            .set({
+              estado: 'anulada',
+              concepto:
+                `${exist.concepto || i.concepto} · ANULADA: reemplazo generación individual`.slice(
+                  0,
+                  500,
+                ),
+            })
+            .where(eq(cuotasGeneradas.id, i.cuotaExistenteId))
+          anuladas++
+        }
       }
 
+      // 2) Siempre INSERT de la nueva (las anuladas previas no se reutilizan)
       try {
         await db.insert(cuotasGeneradas).values({
           personId: i.personId,
@@ -613,8 +631,8 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
           categoriaDeportivaId: i.categoriaDeportivaId,
           periodo: plan.periodo,
           concepto: i.concepto,
-          montoOriginal: i.monto,
-          montoFinal: i.monto,
+          montoOriginal: i.montoOriginal,
+          montoFinal: i.montoFinal,
           fechaVencimiento: plan.vencimiento,
           estado: i.estado,
           dni: i.dni,
@@ -628,7 +646,10 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
         creadas++
       } catch (err: any) {
         console.error(err)
-        errores.push(`${i.nombreCompleto}: error al insertar`)
+        const msg = String(err?.message || err)
+        errores.push(
+          `${i.nombreCompleto}: error al insertar (${msg.slice(0, 150)})`,
+        )
       }
     }
 

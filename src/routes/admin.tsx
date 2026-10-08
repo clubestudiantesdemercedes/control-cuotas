@@ -7,6 +7,7 @@
   useRouterState,
 } from '@tanstack/react-router'
 import { getCurrentUser, logout } from '../server/auth.functions'
+import { puedeVerModulo } from '../lib/permisos'
 
 export const Route = createFileRoute('/admin')({
   beforeLoad: async () => {
@@ -19,20 +20,33 @@ export const Route = createFileRoute('/admin')({
   component: AdminLayout,
 })
 
+type MenuItem = {
+  to: string
+  label: string
+  exact: boolean
+  roles: string[] // quién puede verlo
+}
+
 const menu = [
-  { to: '/admin', label: 'Inicio', exact: true },
-  { to: '/admin/personas', label: 'Personas', exact: false },
-  { to: '/admin/deportes', label: 'Deportes', exact: false },
-  { to: '/admin/cuotas', label: 'Cuotas', exact: false },
-  { to: '/admin/pagos', label: 'Pagos', exact: false },
-  { to: '/admin/tarifario', label: 'Tarifario', exact: false },
-  { to: '/admin/configuracion', label: 'Configuración', exact: false },
+  { to: '/admin', label: 'Inicio', exact: true, modulo: null },
+  { to: '/admin/personas', label: 'Personas', exact: false, modulo: 'personas' },
+  { to: '/admin/deportes', label: 'Deportes', exact: false, modulo: 'deportes' },
+  { to: '/admin/cuotas', label: 'Cuotas', exact: false, modulo: 'cuotas' },
+  { to: '/admin/pagos', label: 'Pagos', exact: false, modulo: 'pagos' },
+  { to: '/admin/tarifario', label: 'Tarifario', exact: false, modulo: 'tarifario' },
+  { to: '/admin/configuracion', label: 'Configuración', exact: false, modulo: 'configuracion' },
+  { to: '/admin/usuarios', label: 'Usuarios', exact: false, modulo: 'usuarios' },
 ] as const
 
 function AdminLayout() {
   const { user } = Route.useRouteContext()
   const router = useRouter()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+
+const menuVisible = menu.filter((item) => {
+    if (!item.modulo) return true
+    return puedeVerModulo(user, item.modulo)
+  })
 
   const handleLogout = async () => {
     await logout()
@@ -65,7 +79,7 @@ function AdminLayout() {
       <div className="flex flex-1 min-h-0">
         <aside className="w-48 bg-white border-r border-gray-200 p-3 shrink-0">
           <nav className="space-y-1">
-            {menu.map((item) => {
+            {menuVisible.map((item) => {
               const active = item.exact
                 ? pathname === item.to
                 : pathname.startsWith(item.to)
@@ -93,4 +107,3 @@ function AdminLayout() {
     </div>
   )
 }
-

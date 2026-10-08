@@ -10,6 +10,8 @@ import {
 } from '../../server/personas.functions'
 import { previsualizarCategoriaDeportiva } from '../../server/categoria.functions'
 import { getProximoNumeroSocio } from '../../server/config.functions'
+import { getCurrentUser } from '../../server/auth.functions'
+import { tienePermiso } from '../../lib/permisos'
 
 export const Route = createFileRoute('/admin/personas')({
   component: PersonasPage,
@@ -33,6 +35,7 @@ function PersonasPage() {
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
+  const [puedeEditar, setPuedeEditar] = useState(false)
 
   const [documentNumber, setDocumentNumber] = useState('')
   const [firstName, setFirstName] = useState('')
@@ -122,6 +125,17 @@ function PersonasPage() {
     if (v === '3_hermano') return '3.º hermano'
     return 'Deportista pleno'
   }
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const u = await getCurrentUser()
+        if (u) setPuedeEditar(tienePermiso(u, 'personas', 'editar'))
+      } catch (e) {
+        console.error(e)
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     let cancelado = false
@@ -232,6 +246,7 @@ function PersonasPage() {
   }
 
   const abrirNueva = () => {
+    if (!puedeEditar) return
     resetForm()
     setOkMsg('')
     setError('')
@@ -239,6 +254,10 @@ function PersonasPage() {
   }
 
   const abrirEditar = async (id: number) => {
+    if (!puedeEditar) {
+      setError('No tenés permiso para editar personas')
+      return
+    }
     setError('')
     setOkMsg('')
     setHacerSocio(false)
@@ -312,13 +331,14 @@ function PersonasPage() {
   }
 
   const editarDesdeDetalle = () => {
-    if (!detalle?.persona?.id) return
+    if (!puedeEditar || !detalle?.persona?.id) return
     const id = detalle.persona.id
     cerrarDetalle()
     void abrirEditar(id)
   }
 
   const handleBaja = async (personId: number) => {
+    if (!puedeEditar) return
     if (
       !confirm(
         `¿Confirmar baja de socio con fecha ${fechaBaja}? No entrará en generaciones nuevas de cuotas.`,
@@ -352,6 +372,10 @@ function PersonasPage() {
 
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!puedeEditar) {
+      setError('No tenés permiso para editar personas')
+      return
+    }
     setSaving(true)
     setError('')
     setOkMsg('')
@@ -463,7 +487,8 @@ function PersonasPage() {
     let lista = [...personas]
     if (q) {
       lista = lista.filter((p) => {
-        if (digits && String(p.documentNumber || '').includes(digits)) return true
+        if (digits && String(p.documentNumber || '').includes(digits))
+          return true
         if (digits && String(p.memberNumber || '').includes(digits)) return true
         if (String(p.lastName || '').toLowerCase().includes(q)) return true
         if (String(p.firstName || '').toLowerCase().includes(q)) return true
@@ -497,17 +522,21 @@ function PersonasPage() {
         <div>
           <h2 className="text-xl font-bold text-gray-800">Personas / socios</h2>
           <p className="text-sm text-gray-500">
-            Click en una fila para ver la ficha. Próximo n° socio:{' '}
-            <strong>{proximoNumero ?? '—'}</strong>
+            Click en una fila para ver la ficha.
+            {puedeEditar
+              ? ` Próximo n° socio: ${proximoNumero ?? '—'}`
+              : ' (solo consulta)'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={abrirNueva}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
-        >
-          Nueva persona
-        </button>
+        {puedeEditar && (
+          <button
+            type="button"
+            onClick={abrirNueva}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
+          >
+            Nueva persona
+          </button>
+        )}
       </div>
 
       {okMsg && (
@@ -614,7 +643,6 @@ function PersonasPage() {
         )}
       </div>
 
-      {/* Modal ficha */}
       {detalleOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 space-y-3">
@@ -684,13 +712,15 @@ function PersonasPage() {
                 </dl>
 
                 <div className="flex flex-wrap gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={editarDesdeDetalle}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
-                  >
-                    Editar
-                  </button>
+                  {puedeEditar && (
+                    <button
+                      type="button"
+                      onClick={editarDesdeDetalle}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg"
+                    >
+                      Editar
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={cerrarDetalle}
@@ -700,7 +730,7 @@ function PersonasPage() {
                   </button>
                 </div>
 
-                {detalle.membresia && (
+                {puedeEditar && detalle.membresia && (
                   <div className="border border-red-100 bg-red-50 rounded-lg p-3 space-y-2 mt-2">
                     <h4 className="text-sm font-semibold text-red-800">
                       Baja de socio
@@ -748,8 +778,7 @@ function PersonasPage() {
         </div>
       )}
 
-      {/* Modal alta / edición */}
-      {showForm && (
+      {showForm && puedeEditar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5">
             <div className="flex justify-between items-center mb-3">
@@ -1045,9 +1074,7 @@ function PersonasPage() {
                       value={disciplinaId}
                       onChange={(e) =>
                         setDisciplinaId(
-                          e.target.value === ''
-                            ? ''
-                            : Number(e.target.value),
+                          e.target.value === '' ? '' : Number(e.target.value),
                         )
                       }
                       className="border rounded-lg px-3 py-2 text-sm w-full"

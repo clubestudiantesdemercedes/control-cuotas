@@ -5,6 +5,7 @@ export type SessionUser = {
   username: string
   fullName: string
   role: 'admin' | 'cargador_pagos'
+  permissions?: Record<string, Record<string, boolean>>
 }
 
 type SessionData = {

@@ -133,6 +133,7 @@ export const users = pgTable('users', {
   role: text('role').notNull(), // admin | cargador_pagos
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  permissions: jsonb('permissions').$type<Record<string, Record<string, boolean>>>().notNull().default({}),
 })
 
 // ============================================================

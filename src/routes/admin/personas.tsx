@@ -50,9 +50,7 @@ function PersonasPage() {
   const [beca, setBeca] = useState(false)
   const [esSocio, setEsSocio] = useState(true)
   const [esDeportista, setEsDeportista] = useState(false)
-  const [category, setCategory] = useState<
-    'menor' | 'cadete' | 'activo' | 'vitalicio'
-  >('activo')
+  const [esVitalicio, setEsVitalicio] = useState(false)
   const [subcategoriaCuota, setSubcategoriaCuota] = useState<
     'pleno' | '3_familiar' | '4_familiar'
   >('pleno')
@@ -225,7 +223,7 @@ function PersonasPage() {
     setBeca(false)
     setEsSocio(true)
     setEsDeportista(false)
-    setCategory('activo')
+    setEsVitalicio(false)
     setSubcategoriaCuota('pleno')
     setSubcategoriaCuotaDeporte('pleno')
     setDisciplinaId('')
@@ -285,7 +283,7 @@ function PersonasPage() {
     setBeca(!!p.beca)
     setEsSocio(!!res.membresia)
     setEsDeportista(!!res.inscripcion)
-    setCategory((res.membresia?.category as any) || 'activo')
+    setEsVitalicio(res.membresia?.category === 'vitalicio')
     setSubcategoriaCuota((res.membresia?.subcategoriaCuota as any) || 'pleno')
     setSubcategoriaCuotaDeporte(
       (res.inscripcion?.subcategoriaCuota as any) || 'pleno',
@@ -399,11 +397,8 @@ function PersonasPage() {
             tieneDebitoAutomatico: tieneDebito,
             beca,
             hacerSocio: !esSocio && hacerSocio,
-            category: quiereDeporte
-              ? null
-              : esSocio || hacerSocio
-                ? category
-                : null,
+            esVitalicio:
+              !quiereDeporte && (esSocio || hacerSocio) ? esVitalicio : false,
             subcategoriaCuota: quiereDeporte
               ? 'pleno'
               : esSocio || hacerSocio
@@ -442,7 +437,7 @@ function PersonasPage() {
             beca,
             esSocio,
             esDeportista: esSocio ? esDeportista : false,
-            category: esSocio && !esDeportista ? category : undefined,
+            esVitalicio: esSocio && !esDeportista ? esVitalicio : false,
             subcategoriaCuota:
               esSocio && !esDeportista ? subcategoriaCuota : undefined,
             subcategoriaCuotaDeporte:
@@ -515,6 +510,46 @@ function PersonasPage() {
 
   const sortMark = (key: SortKey) =>
     sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''
+
+  const bloqueCategoriaSocial = (
+    <div className="space-y-2 border border-gray-100 rounded-lg p-3 bg-gray-50">
+      <p className="text-xs text-gray-600">
+        Categoría social (automática por edad):{' '}
+        <strong>
+          {esVitalicio
+            ? 'vitalicio'
+            : birthDate
+              ? categoriaSocialPorEdad(birthDate)
+              : '— (cargá fecha de nacimiento)'}
+        </strong>
+      </p>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={esVitalicio}
+          onChange={(e) => setEsVitalicio(e.target.checked)}
+        />
+        Socio vitalicio (manual)
+      </label>
+      <div>
+        <label className="block text-xs text-gray-600 mb-1">
+          Subcategoría familiar
+        </label>
+        <select
+          value={subcategoriaCuota}
+          onChange={(e) =>
+            setSubcategoriaCuota(e.target.value as typeof subcategoriaCuota)
+          }
+          className="border rounded-lg px-3 py-2 text-sm w-full bg-white"
+          disabled={esVitalicio}
+        >
+          <option value="pleno">Pleno</option>
+          <option value="3_familiar">3.º familiar</option>
+          <option value="4_familiar">4.º o más</option>
+        </select>
+      </div>
+    </div>
+  )
 
   return (
     <div className="space-y-4">
@@ -927,7 +962,10 @@ function PersonasPage() {
                       checked={esSocio}
                       onChange={(e) => {
                         setEsSocio(e.target.checked)
-                        if (!e.target.checked) setEsDeportista(false)
+                        if (!e.target.checked) {
+                          setEsDeportista(false)
+                          setEsVitalicio(false)
+                        }
                       }}
                     />
                     Es socio
@@ -937,50 +975,15 @@ function PersonasPage() {
                       <input
                         type="checkbox"
                         checked={esDeportista}
-                        onChange={(e) => setEsDeportista(e.target.checked)}
+                        onChange={(e) => {
+                          setEsDeportista(e.target.checked)
+                          if (e.target.checked) setEsVitalicio(false)
+                        }}
                       />
                       Socio deportista
                     </label>
                   )}
-                  {esSocio && !esDeportista && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Categoría social
-                        </label>
-                        <select
-                          value={category}
-                          onChange={(e) =>
-                            setCategory(e.target.value as typeof category)
-                          }
-                          className="border rounded-lg px-3 py-2 text-sm w-full"
-                        >
-                          <option value="menor">Menor</option>
-                          <option value="cadete">Cadete</option>
-                          <option value="activo">Activo</option>
-                          <option value="vitalicio">Vitalicio</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Subcategoría
-                        </label>
-                        <select
-                          value={subcategoriaCuota}
-                          onChange={(e) =>
-                            setSubcategoriaCuota(
-                              e.target.value as typeof subcategoriaCuota,
-                            )
-                          }
-                          className="border rounded-lg px-3 py-2 text-sm w-full"
-                        >
-                          <option value="pleno">Pleno</option>
-                          <option value="3_familiar">3.º familiar</option>
-                          <option value="4_familiar">4.º o más</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
+                  {esSocio && !esDeportista && bloqueCategoriaSocial}
                 </>
               )}
 
@@ -1007,7 +1010,10 @@ function PersonasPage() {
                       <input
                         type="checkbox"
                         checked={agregarDeporte}
-                        onChange={(e) => setAgregarDeporte(e.target.checked)}
+                        onChange={(e) => {
+                          setAgregarDeporte(e.target.checked)
+                          if (e.target.checked) setEsVitalicio(false)
+                        }}
                       />
                       Agregar deporte
                     </label>
@@ -1022,45 +1028,9 @@ function PersonasPage() {
                       Quitar deporte (pasar a socio social)
                     </label>
                   )}
-                  {esSocio && !mostrarBloqueDeporte && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Categoría social
-                        </label>
-                        <select
-                          value={category}
-                          onChange={(e) =>
-                            setCategory(e.target.value as typeof category)
-                          }
-                          className="border rounded-lg px-3 py-2 text-sm w-full"
-                        >
-                          <option value="menor">Menor</option>
-                          <option value="cadete">Cadete</option>
-                          <option value="activo">Activo</option>
-                          <option value="vitalicio">Vitalicio</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Subcategoría
-                        </label>
-                        <select
-                          value={subcategoriaCuota}
-                          onChange={(e) =>
-                            setSubcategoriaCuota(
-                              e.target.value as typeof subcategoriaCuota,
-                            )
-                          }
-                          className="border rounded-lg px-3 py-2 text-sm w-full"
-                        >
-                          <option value="pleno">Pleno</option>
-                          <option value="3_familiar">3.º familiar</option>
-                          <option value="4_familiar">4.º o más</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
+                  {(esSocio || hacerSocio) &&
+                    !mostrarBloqueDeporte &&
+                    bloqueCategoriaSocial}
                 </>
               )}
 

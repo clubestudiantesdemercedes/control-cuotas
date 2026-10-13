@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { desc, eq, isNull, and, asc } from 'drizzle-orm'
+import { eq, isNull, and, asc } from 'drizzle-orm'
 import { db } from '../../db'
 import {
   people,
@@ -12,6 +12,7 @@ import {
 import { requireUser } from './auth.server'
 import { resolverCategoriaDeportiva } from './deportes.server'
 
+/** Categoría social por edad (hoy). No aplica a vitalicio. */
 function calcularCategoriaPorEdad(
   birthDate?: string | null,
 ): 'menor' | 'cadete' | 'activo' {
@@ -24,6 +25,25 @@ function calcularCategoriaPorEdad(
   if (edad < 12) return 'menor'
   if (edad < 18) return 'cadete'
   return 'activo'
+}
+
+/**
+ * - Deportista → siempre por edad (no vitalicio)
+ * - No deportista + esVitalicio → vitalicio
+ * - No deportista → por edad
+ */
+function resolverCategoriaSocial(params: {
+  birthDate?: string | null
+  esDeportista: boolean
+  esVitalicio?: boolean
+}): 'menor' | 'cadete' | 'activo' | 'vitalicio' {
+  if (params.esDeportista) {
+    return calcularCategoriaPorEdad(params.birthDate)
+  }
+  if (params.esVitalicio) {
+    return 'vitalicio'
+  }
+  return calcularCategoriaPorEdad(params.birthDate)
 }
 
 async function obtenerYReservarNumeroSocio(): Promise<string> {
@@ -212,7 +232,8 @@ export const crearPersona = createServerFn({ method: 'POST' })
       beca?: boolean
       esSocio: boolean
       esDeportista: boolean
-      category?: 'menor' | 'cadete' | 'activo' | 'vitalicio'
+      /** Solo válido si no es deportista */
+      esVitalicio?: boolean
       subcategoriaCuota?: 'pleno' | '3_familiar' | '4_familiar'
       subcategoriaCuotaDeporte?: 'pleno' | '2_hermano' | '3_hermano'
       disciplinaId?: number
@@ -255,21 +276,8 @@ export const crearPersona = createServerFn({ method: 'POST' })
       return { ok: false as const, error: 'Email inválido' }
     }
 
-    if (data.esSocio && data.esDeportista) {
-      if (!data.disciplinaId) {
-        return { ok: false as const, error: 'Elegí el deporte' }
-      }
-      if (!data.birthDate) {
-        return {
-          ok: false as const,
-          error:
-            'La persona necesita fecha de nacimiento para determinar la categoría',
-        }
-      }
-    }
-
-    if (data.esSocio && !data.esDeportista && !data.category) {
-      return { ok: false as const, error: 'Elegí la categoría social' }
+    if (data.esSocio && data.esDeportista && !data.disciplinaId) {
+      return { ok: false as const, error: 'Elegí el deporte' }
     }
 
     try {
@@ -300,9 +308,11 @@ export const crearPersona = createServerFn({ method: 'POST' })
       const startDate = new Date().toISOString().slice(0, 10)
       const memberNumber = await obtenerYReservarNumeroSocio()
 
-      const category = data.esDeportista
-        ? calcularCategoriaPorEdad(data.birthDate)
-        : data.category!
+      const category = resolverCategoriaSocial({
+        birthDate: data.birthDate,
+        esDeportista: data.esDeportista,
+        esVitalicio: Boolean(data.esVitalicio) && !data.esDeportista,
+      })
 
       const subcategoriaCuota = data.esDeportista
         ? 'pleno'
@@ -387,7 +397,8 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       tieneDebitoAutomatico?: boolean
       beca?: boolean
       hacerSocio?: boolean
-      category?: 'menor' | 'cadete' | 'activo' | 'vitalicio' | null
+      /** Solo si no es / no será deportista */
+      esVitalicio?: boolean
       subcategoriaCuota?: 'pleno' | '3_familiar' | '4_familiar' | null
       subcategoriaCuotaDeporte?: 'pleno' | '2_hermano' | '3_hermano' | null
       agregarOCambiarDeporte?: boolean
@@ -470,9 +481,11 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
 
       if (!mem && data.hacerSocio) {
         const memberNumber = await obtenerYReservarNumeroSocio()
-        const category = seraDeportista
-          ? calcularCategoriaPorEdad(data.birthDate)
-          : data.category || calcularCategoriaPorEdad(data.birthDate)
+        const category = resolverCategoriaSocial({
+          birthDate: data.birthDate,
+          esDeportista: seraDeportista,
+          esVitalicio: Boolean(data.esVitalicio) && !seraDeportista,
+        })
 
         await db.insert(memberships).values({
           personId: data.id,
@@ -487,31 +500,22 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       }
 
       if (mem) {
-        if (seraDeportista && mem.category !== 'vitalicio') {
-          const catSocial = calcularCategoriaPorEdad(data.birthDate)
-          await db
-            .update(memberships)
-            .set({
-              category: catSocial,
-              subcategoriaCuota: 'pleno',
-              updatedAt: new Date(),
-            })
-            .where(eq(memberships.id, mem.id))
-        } else if (!seraDeportista) {
-          const patch: {
-            category?: string
-            subcategoriaCuota?: string
-            updatedAt: Date
-          } = { updatedAt: new Date() }
-          if (data.category) patch.category = data.category
-          if (data.subcategoriaCuota) {
-            patch.subcategoriaCuota = data.subcategoriaCuota
-          }
-          await db
-            .update(memberships)
-            .set(patch)
-            .where(eq(memberships.id, mem.id))
-        }
+        const category = resolverCategoriaSocial({
+          birthDate: data.birthDate,
+          esDeportista: seraDeportista,
+          esVitalicio: Boolean(data.esVitalicio) && !seraDeportista,
+        })
+
+        await db
+          .update(memberships)
+          .set({
+            category,
+            subcategoriaCuota: seraDeportista
+              ? 'pleno'
+              : data.subcategoriaCuota ?? mem.subcategoriaCuota ?? 'pleno',
+            updatedAt: new Date(),
+          })
+          .where(eq(memberships.id, mem.id))
       }
 
       const [insc] = await db
@@ -597,11 +601,11 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
     }
   })
 
-  export const darBajaMembresia = createServerFn({ method: 'POST' })
+export const darBajaMembresia = createServerFn({ method: 'POST' })
   .inputValidator(
     (data: {
       personId: number
-      fechaBaja: string // YYYY-MM-DD
+      fechaBaja: string
       motivo?: string
     }) => data,
   )

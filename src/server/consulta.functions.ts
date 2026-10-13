@@ -1,14 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { eq, and, gte, desc, inArray, isNull } from 'drizzle-orm'
-import { db } from '../../db'
-import {
-  people,
-  memberships,
-  cuotasGeneradas,
-  pagos,
-  mediosPago,
-  pagoCuotas,
-} from '../../db/schema'
+import { estadoCuotaVisual } from '../lib/estado-cuota'
 
 function periodoHaceMeses(meses: number): string {
   const d = new Date()
@@ -16,10 +8,34 @@ function periodoHaceMeses(meses: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function enriquecerCuota(c: any) {
+  const visual = estadoCuotaVisual({
+    estado: c.estado,
+    fechaVencimiento: c.fechaVencimiento,
+  })
+  return {
+    ...c,
+    estadoVisual: visual.codigo,
+    estadoLabel: visual.label,
+  }
+}
+
 export const buscarPorDocumentoOSocio = createServerFn({ method: 'GET' })
-  .inputValidator((data: { valor: string; tipo: 'dni' | 'socio' | 'grupo' }) => data)
+  .inputValidator(
+    (data: { valor: string; tipo: 'dni' | 'socio' | 'grupo' }) => data,
+  )
   .handler(async ({ data }) => {
     try {
+      const { db } = await import('../../db')
+      const {
+        people,
+        memberships,
+        cuotasGeneradas,
+        pagos,
+        mediosPago,
+        pagoCuotas,
+      } = await import('../../db/schema')
+
       const { valor, tipo } = data
       const busqueda = valor.trim()
 
@@ -44,7 +60,10 @@ export const buscarPorDocumentoOSocio = createServerFn({ method: 'GET' })
           .select()
           .from(people)
           .where(
-            and(eq(people.documentNumber, busqueda), eq(people.status, 'activo')),
+            and(
+              eq(people.documentNumber, busqueda),
+              eq(people.status, 'activo'),
+            ),
           )
         personas = rows
         personIds = rows.map((p) => p.id)
@@ -106,7 +125,7 @@ export const buscarPorDocumentoOSocio = createServerFn({ method: 'GET' })
         }
       }
 
-      const cuotasPendientes = await db
+      const cuotasPendientesRaw = await db
         .select()
         .from(cuotasGeneradas)
         .where(
@@ -117,13 +136,13 @@ export const buscarPorDocumentoOSocio = createServerFn({ method: 'GET' })
         )
         .orderBy(desc(cuotasGeneradas.periodo))
 
-      const saldo = cuotasPendientes.reduce(
+      const saldo = cuotasPendientesRaw.reduce(
         (acc, c) => acc + Number(c.montoFinal),
         0,
       )
 
       const periodoDesde = periodoHaceMeses(12)
-      const historialCuotas = await db
+      const historialCuotasRaw = await db
         .select()
         .from(cuotasGeneradas)
         .where(
@@ -200,8 +219,8 @@ export const buscarPorDocumentoOSocio = createServerFn({ method: 'GET' })
         ok: true as const,
         socios,
         saldo,
-        cuotasPendientes,
-        historialCuotas,
+        cuotasPendientes: cuotasPendientesRaw.map(enriquecerCuota),
+        historialCuotas: historialCuotasRaw.map(enriquecerCuota),
         historialPagos,
       }
     } catch (err) {

@@ -16,6 +16,7 @@ import {
   anularCuotasMasiva,
   anularCuotasPersonaPeriodo,
 } from '../../server/cuotas-anular.functions'
+import { colorEstadoVisual } from '../../lib/estado-cuota'
 
 const MOTIVOS_UI = [
   { codigo: 'baja_socio', label: 'Baja de socio / no corresponde cuota' },
@@ -375,14 +376,11 @@ function CuotasPage() {
       if (!res.ok) {
         setError((res as any).error || 'Error')
       } else {
-        const avisos =
-          res.errores?.length > 0 ? res.errores.join(' · ') : ''
+        const avisos = res.errores?.length > 0 ? res.errores.join(' · ') : ''
         setMsg(
           `Individual OK: ${res.creadas} creadas, ${res.anuladas} anuladas.`,
         )
-        if (avisos) {
-          setError(avisos)
-        }
+        if (avisos) setError(avisos)
         setPreviewInd(null)
         await cargarPeriodos()
       }
@@ -416,7 +414,8 @@ function CuotasPage() {
         Monto_original: Number(c.montoOriginal),
         Monto_final: Number(c.montoFinal),
         Vencimiento: c.fechaVencimiento ?? '',
-        Estado: c.estado ?? '',
+        Estado_DB: c.estado ?? '',
+        Estado_visual: c.estadoLabel ?? c.estado ?? '',
       }))
       const ws = XLSX.utils.json_to_sheet(rows)
       const wb = XLSX.utils.book_new()
@@ -432,15 +431,15 @@ function CuotasPage() {
     }
   }
 
-  const montoItem = (i: any) =>
-    Number(i.montoFinal ?? i.monto ?? 0)
+  const montoItem = (i: any) => Number(i.montoFinal ?? i.monto ?? 0)
 
   return (
     <div className="max-w-5xl space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-800">Cuotas</h2>
         <p className="text-sm text-gray-500">
-          Listado, generación masiva e individual, anulación
+          Listado, generación masiva e individual, anulación. Vencida/mora se
+          calculan al consultar (no cambian la base).
         </p>
       </div>
 
@@ -512,7 +511,7 @@ function CuotasPage() {
                 className="border rounded-lg px-3 py-2 text-sm"
               >
                 <option value="todas">Todas</option>
-                <option value="pendiente">Pendientes</option>
+                <option value="pendiente">Pendientes (DB)</option>
                 <option value="pagada">Pagadas</option>
                 <option value="anulada">Anuladas</option>
               </select>
@@ -552,7 +551,7 @@ function CuotasPage() {
           </div>
 
           {resumenLista && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
               <div className="bg-white border rounded-lg p-3">
                 <p className="text-gray-500 text-xs">Cantidad</p>
                 <p className="font-semibold text-lg">{resumenLista.cantidad}</p>
@@ -574,6 +573,18 @@ function CuotasPage() {
                 <p className="font-semibold text-lg text-amber-700">
                   $
                   {Number(resumenLista.totalPendiente).toLocaleString('es-AR')}
+                </p>
+              </div>
+              <div className="bg-white border rounded-lg p-3">
+                <p className="text-gray-500 text-xs">Vencidas</p>
+                <p className="font-semibold text-lg text-orange-700">
+                  {resumenLista.vencidas ?? 0}
+                </p>
+              </div>
+              <div className="bg-white border rounded-lg p-3">
+                <p className="text-gray-500 text-xs">En mora</p>
+                <p className="font-semibold text-lg text-red-700">
+                  {resumenLista.enMora ?? 0}
                 </p>
               </div>
             </div>
@@ -613,14 +624,12 @@ function CuotasPage() {
                         <td className="px-3 py-2">
                           <span
                             className={
-                              c.estado === 'pagada'
-                                ? 'text-green-700'
-                                : c.estado === 'pendiente'
-                                  ? 'text-amber-700'
-                                  : 'text-gray-500'
+                              colorEstadoVisual(
+                                (c.estadoVisual || c.estado) as any,
+                              ) + ' font-medium'
                             }
                           >
-                            {c.estado}
+                            {c.estadoLabel || c.estado}
                           </span>
                         </td>
                         <td className="px-3 py-2">
@@ -748,8 +757,7 @@ function CuotasPage() {
           <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
             <p className="text-sm text-gray-600">
               Generá según la situación actual, o solo anulá pendientes de un
-              período sin crear otra cuota. Si tiene débito, el monto final es
-              90% de la tarifa.
+              período. Si tiene débito, el monto final es 90% de la tarifa.
             </p>
             <div>
               <label className="block text-xs text-gray-600 mb-1">
@@ -835,7 +843,7 @@ function CuotasPage() {
                     onChange={(e) => setObservacionAnul(e.target.value)}
                     rows={2}
                     className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
-                    placeholder="Opcional: ej. se dio de baja el 15/03"
+                    placeholder="Opcional"
                   />
                 </div>
                 <button
@@ -907,8 +915,7 @@ function CuotasPage() {
                     <li key={idx} className="border rounded px-2 py-1">
                       <span className="font-medium">{i.nombreCompleto}</span>
                       {' — '}
-                      {i.concepto} · $
-                      {montoItem(i).toLocaleString('es-AR')}
+                      {i.concepto} · ${montoItem(i).toLocaleString('es-AR')}
                       {i.tieneDebito ? (
                         <span className="text-blue-700 text-xs">
                           {' '}

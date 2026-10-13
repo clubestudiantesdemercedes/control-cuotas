@@ -8,7 +8,9 @@ export const Route = createFileRoute('/')({
 
 function PublicConsulta() {
   const [busqueda, setBusqueda] = useState('')
-  const [tipoBusqueda, setTipoBusqueda] = useState<'dni' | 'socio' | 'grupo'>('dni')
+  const [tipoBusqueda, setTipoBusqueda] = useState<'dni' | 'socio' | 'grupo'>(
+    'dni',
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [resultado, setResultado] = useState<any>(null)
@@ -37,6 +39,22 @@ function PublicConsulta() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const colorEstado = (c: any) => {
+    const codigo = c.estadoVisual || c.estado
+    if (codigo === 'pagada') return 'text-green-600'
+    if (codigo === 'mora') return 'text-red-700'
+    if (codigo === 'vencida') return 'text-orange-700'
+    if (codigo === 'pendiente') return 'text-amber-600'
+    return 'text-gray-500'
+  }
+
+  const fondoPendiente = (c: any) => {
+    const codigo = c.estadoVisual || c.estado
+    if (codigo === 'mora') return 'bg-red-50 border-red-100'
+    if (codigo === 'vencida') return 'bg-orange-50 border-orange-100'
+    return 'bg-amber-50 border-amber-100'
   }
 
   return (
@@ -79,7 +97,11 @@ function PublicConsulta() {
                         : 'bg-white text-gray-700 border-gray-300'
                     }`}
                   >
-                    {tipo === 'dni' ? 'DNI' : tipo === 'socio' ? 'N° Socio' : 'Grupo Familiar'}
+                    {tipo === 'dni'
+                      ? 'DNI'
+                      : tipo === 'socio'
+                        ? 'N° Socio'
+                        : 'Grupo Familiar'}
                   </button>
                 ))}
               </div>
@@ -131,25 +153,34 @@ function PublicConsulta() {
               ))}
 
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                <p className="text-sm text-blue-800">Saldo actual (cuotas adeudadas)</p>
+                <p className="text-sm text-blue-800">
+                  Saldo actual (cuotas adeudadas)
+                </p>
                 <p className="text-2xl font-bold text-blue-900">
                   ${Number(resultado.saldo ?? 0).toLocaleString('es-AR')}
                 </p>
               </div>
 
               <div>
-                <h3 className="font-semibold text-gray-800 mb-2">Cuotas pendientes</h3>
+                <h3 className="font-semibold text-gray-800 mb-2">
+                  Cuotas pendientes
+                </h3>
                 {resultado.cuotasPendientes.length === 0 ? (
-                  <p className="text-sm text-green-700">No hay cuotas pendientes.</p>
+                  <p className="text-sm text-green-700">
+                    No hay cuotas pendientes.
+                  </p>
                 ) : (
                   <ul className="space-y-2">
                     {resultado.cuotasPendientes.map((c: any) => (
                       <li
                         key={c.id}
-                        className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded px-3 py-2 text-sm"
+                        className={`flex justify-between items-center border rounded px-3 py-2 text-sm ${fondoPendiente(c)}`}
                       >
                         <span>
-                          {c.concepto} ({c.periodo})
+                          {c.concepto} ({c.periodo}){' '}
+                          <span className={`font-medium ${colorEstado(c)}`}>
+                            ({c.estadoLabel || c.estado || 'Pendiente'})
+                          </span>
                         </span>
                         <span className="font-semibold">
                           ${Number(c.montoFinal).toLocaleString('es-AR')}
@@ -165,7 +196,9 @@ function PublicConsulta() {
                   Historial de cuotas (últimos 12 meses)
                 </h3>
                 {resultado.historialCuotas.length === 0 ? (
-                  <p className="text-sm text-gray-500">Sin cuotas en el período.</p>
+                  <p className="text-sm text-gray-500">
+                    Sin cuotas en el período.
+                  </p>
                 ) : (
                   <ul className="space-y-2">
                     {resultado.historialCuotas.map((c: any) => (
@@ -175,16 +208,8 @@ function PublicConsulta() {
                       >
                         <span>
                           {c.concepto}{' '}
-                          <span
-                            className={
-                              c.estado === 'pagada'
-                                ? 'text-green-600'
-                                : c.estado === 'pendiente'
-                                  ? 'text-amber-600'
-                                  : 'text-gray-500'
-                            }
-                          >
-                            ({c.estado})
+                          <span className={colorEstado(c)}>
+                            ({c.estadoLabel || c.estado})
                           </span>
                         </span>
                         <span className="font-medium">
@@ -201,7 +226,9 @@ function PublicConsulta() {
                   Pagos registrados (últimos 12 meses)
                 </h3>
                 {resultado.historialPagos.length === 0 ? (
-                  <p className="text-sm text-gray-500">Sin pagos registrados en el período.</p>
+                  <p className="text-sm text-gray-500">
+                    Sin pagos registrados en el período.
+                  </p>
                 ) : (
                   <ul className="space-y-2">
                     {resultado.historialPagos.map((p: any) => (

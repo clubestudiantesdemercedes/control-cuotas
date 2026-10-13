@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { requireUser } from './auth.server'
+import { estadoCuotaVisual } from '../lib/estado-cuota'
 
 export const listarPeriodosConCuotas = createServerFn({ method: 'GET' }).handler(
   async () => {
@@ -72,22 +73,38 @@ export const listarCuotasPorPeriodo = createServerFn({ method: 'GET' })
       })
     }
 
-    const total = rows.reduce((acc, r) => acc + Number(r.montoFinal), 0)
-    const pendientes = rows.filter((r) => r.estado === 'pendiente')
+    const cuotas = rows.map((r) => {
+      const visual = estadoCuotaVisual({
+        estado: r.estado,
+        fechaVencimiento: r.fechaVencimiento,
+      })
+      return {
+        ...r,
+        estadoVisual: visual.codigo,
+        estadoLabel: visual.label,
+      }
+    })
+
+    const total = cuotas.reduce((acc, r) => acc + Number(r.montoFinal), 0)
+    const pendientes = cuotas.filter((r) => r.estado === 'pendiente')
     const totalPendiente = pendientes.reduce(
       (acc, r) => acc + Number(r.montoFinal),
       0,
     )
+    const vencidas = cuotas.filter((r) => r.estadoVisual === 'vencida').length
+    const enMora = cuotas.filter((r) => r.estadoVisual === 'mora').length
 
     return {
       ok: true as const,
       periodo,
-      cuotas: rows,
+      cuotas,
       resumen: {
-        cantidad: rows.length,
+        cantidad: cuotas.length,
         total,
         pendientes: pendientes.length,
         totalPendiente,
+        vencidas,
+        enMora,
       },
     }
   })

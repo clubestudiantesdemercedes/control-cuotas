@@ -1,6 +1,10 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm'
 import { requireUser } from './auth.server'
+import {
+  categoriaSocialPorEdad,
+  edadAFecha,
+} from '../lib/categoria-social'
 
 function primerDia(periodo: string) {
   const m = periodo.match(/^(\d{4})-(\d{2})$/)
@@ -90,6 +94,7 @@ async function loadSocios(db: any, schema: any, personId?: number) {
       dni: people.documentNumber,
       firstName: people.firstName,
       lastName: people.lastName,
+      birthDate: people.birthDate,
       beca: people.beca,
       tieneDebitoAutomatico: people.tieneDebitoAutomatico,
       membershipId: memberships.id,
@@ -158,6 +163,41 @@ type ItemPlan = {
   tieneDebito: boolean
 }
 
+type CambioCategoria = {
+  personId: number
+  membershipId: number
+  dni: string
+  nombreCompleto: string
+  nroSocio: string | null
+  categoriaAnterior: string
+  categoriaNueva: 'menor' | 'cadete' | 'activo'
+  edad: number
+  birthDate: string
+}
+
+async function aplicarCambiosCategoria(
+  db: any,
+  memberships: any,
+  cambios: CambioCategoria[],
+  errores: string[],
+) {
+  for (const cambio of cambios) {
+    try {
+      await db
+        .update(memberships)
+        .set({
+          category: cambio.categoriaNueva,
+        })
+        .where(eq(memberships.id, cambio.membershipId))
+    } catch (err) {
+      console.error(err)
+      errores.push(
+        `${cambio.nombreCompleto}: no se pudo actualizar categoría a ${cambio.categoriaNueva}`,
+      )
+    }
+  }
+}
+
 async function planificar(params: {
   periodo: string
   personId?: number
@@ -171,7 +211,8 @@ async function planificar(params: {
 
   const periodo = params.periodo
   const venc = diaVencimiento(periodo)
-  if (!venc || !primerDia(periodo)) {
+  const diaRef = primerDia(periodo)
+  if (!venc || !diaRef) {
     return { ok: false as const, error: 'Período inválido (YYYY-MM)' }
   }
 
@@ -212,10 +253,35 @@ async function planificar(params: {
   const selDep = new Set(params.categoriasDeportivasIds || [])
   const items: ItemPlan[] = []
   const errores: string[] = []
+  const cambiosCategoria: CambioCategoria[] = []
 
   for (const s of socios) {
     const nombreCompleto = `${s.lastName}, ${s.firstName}`
     const esVitalicio = s.category === 'vitalicio'
+
+    // Categoría social por edad (vitalicio no se toca)
+    let categoryEfectiva = s.category || 'activo'
+    if (!esVitalicio && s.birthDate) {
+      const calc = categoriaSocialPorEdad(s.birthDate, diaRef)
+      const edad = edadAFecha(s.birthDate, diaRef)
+      if (calc && calc !== s.category) {
+        cambiosCategoria.push({
+          personId: s.personId,
+          membershipId: s.membershipId,
+          dni: s.dni,
+          nombreCompleto,
+          nroSocio: s.memberNumber,
+          categoriaAnterior: s.category || '—',
+          categoriaNueva: calc,
+          edad: edad ?? 0,
+          birthDate: String(s.birthDate).slice(0, 10),
+        })
+        categoryEfectiva = calc
+      } else if (calc) {
+        categoryEfectiva = calc
+      }
+    }
+
     const tieneDeporte =
       s.inscId != null &&
       s.disciplinaId != null &&
@@ -253,7 +319,7 @@ async function planificar(params: {
       ) {
         clave = s.subcategoriaCuota
       } else {
-        clave = s.category || 'activo'
+        clave = categoryEfectiva || 'activo'
       }
       if (!params.modoIndividual && !selSocial.has(clave)) continue
       tipo = 'social'
@@ -316,6 +382,7 @@ async function planificar(params: {
     vencimiento: venc,
     items,
     errores,
+    cambiosCategoria,
   }
 }
 
@@ -392,6 +459,7 @@ export const previsualizarGeneracion = createServerFn({ method: 'POST' })
       totalMonto: aGenerar.reduce((a, i) => a + Number(i.montoFinal), 0),
       resumen: [...resumenMap.values()],
       errores: plan.errores,
+      cambiosCategoria: plan.cambiosCategoria,
     }
   })
 
@@ -406,7 +474,7 @@ export const confirmarGeneracion = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     await requireUser()
     const { db } = await import('../../db')
-    const { cuotasGeneradas, generacionesCuotas } = await import(
+    const { cuotasGeneradas, generacionesCuotas, memberships } = await import(
       '../../db/schema'
     )
 
@@ -422,6 +490,14 @@ export const confirmarGeneracion = createServerFn({ method: 'POST' })
     let omitidas = 0
     const errores = [...plan.errores]
     let totalMonto = 0
+
+    // Aplicar cambios de categoría social por edad
+    await aplicarCambiosCategoria(
+      db,
+      memberships,
+      plan.cambiosCategoria,
+      errores,
+    )
 
     for (const i of plan.items) {
       if (i.cuotaExistenteId != null) {
@@ -471,7 +547,11 @@ export const confirmarGeneracion = createServerFn({ method: 'POST' })
       cantidadCuotas: creadas,
       cantidadErrores: errores.length,
       modo: 'masiva',
-      log: { omitidas, errores },
+      log: {
+        omitidas,
+        errores,
+        cambiosCategoria: plan.cambiosCategoria,
+      },
     })
 
     return {
@@ -482,6 +562,7 @@ export const confirmarGeneracion = createServerFn({ method: 'POST' })
       omitidas,
       errores,
       totalMonto,
+      cambiosCategoria: plan.cambiosCategoria,
     }
   })
 
@@ -553,6 +634,7 @@ export const previsualizarGeneracionIndividual = createServerFn({
       aReemplazar: aReemplazar.length,
       errores: plan.errores,
       totalMonto: plan.items.reduce((a, i) => a + Number(i.montoFinal), 0),
+      cambiosCategoria: plan.cambiosCategoria,
     }
   })
 
@@ -567,7 +649,7 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     await requireUser()
     const { db } = await import('../../db')
-    const { cuotasGeneradas, generacionesCuotas } = await import(
+    const { cuotasGeneradas, generacionesCuotas, memberships } = await import(
       '../../db/schema'
     )
 
@@ -582,8 +664,16 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
     let creadas = 0
     const errores = [...plan.errores]
 
+    // Aplicar cambios de categoría social por edad
+    await aplicarCambiosCategoria(
+      db,
+      memberships,
+      plan.cambiosCategoria,
+      errores,
+    )
+
     for (const i of plan.items) {
-      // 1) Si hay pendiente y se pidió reemplazo → anular (queda historial con motivo)
+      // 1) Si hay pendiente y se pidió reemplazo → anular (queda historial)
       if (i.cuotaExistenteId) {
         if (!data.reemplazarSiExiste) {
           errores.push(
@@ -621,7 +711,7 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
         }
       }
 
-      // 2) Siempre INSERT de la nueva (las anuladas previas no se reutilizan)
+      // 2) Siempre INSERT de la nueva
       try {
         await db.insert(cuotasGeneradas).values({
           personId: i.personId,
@@ -659,7 +749,12 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
       cantidadCuotas: creadas,
       cantidadErrores: errores.length,
       modo: 'individual',
-      log: { anuladas, personId: data.personId, errores },
+      log: {
+        anuladas,
+        personId: data.personId,
+        errores,
+        cambiosCategoria: plan.cambiosCategoria,
+      },
     })
 
     return {
@@ -667,5 +762,6 @@ export const confirmarGeneracionIndividual = createServerFn({ method: 'POST' })
       creadas,
       anuladas,
       errores,
+      cambiosCategoria: plan.cambiosCategoria,
     }
   })

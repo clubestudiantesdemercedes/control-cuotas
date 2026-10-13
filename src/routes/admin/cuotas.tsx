@@ -159,6 +159,22 @@ function CuotasPage() {
     )
   }
 
+  const descargarCambiosCsv = (cambios: any[], periodoCsv: string) => {
+    if (!cambios?.length) return
+    const lineas = cambios.map(
+      (c: any) =>
+        `${c.nombreCompleto};${c.dni};${c.nroSocio || ''};${c.categoriaAnterior};${c.categoriaNueva};${c.edad}`,
+    )
+    const csv = 'Nombre;DNI;Socio;Antes;Nueva;Edad\n' + lineas.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `cambios-categoria-${periodoCsv}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleAnular = async (cuotaId: number) => {
     const observacion = window.prompt(
       'Detalle de anulación (opcional, Enter para continuar):',
@@ -304,8 +320,10 @@ function CuotasPage() {
       })
       if (!res.ok) setError(res.error)
       else {
+        const nCambios = res.cambiosCategoria?.length || 0
         setMsg(
           `Generadas ${res.creadas}. Omitidas: ${res.omitidas}.` +
+            (nCambios ? ` Categorías actualizadas: ${nCambios}.` : '') +
             (res.errores?.length
               ? ` Errores: ${res.errores.join(' · ')}`
               : ''),
@@ -377,8 +395,10 @@ function CuotasPage() {
         setError((res as any).error || 'Error')
       } else {
         const avisos = res.errores?.length > 0 ? res.errores.join(' · ') : ''
+        const nCambios = res.cambiosCategoria?.length || 0
         setMsg(
-          `Individual OK: ${res.creadas} creadas, ${res.anuladas} anuladas.`,
+          `Individual OK: ${res.creadas} creadas, ${res.anuladas} anuladas.` +
+            (nCambios ? ` Categoría actualizada: ${nCambios}.` : ''),
         )
         if (avisos) setError(avisos)
         setPreviewInd(null)
@@ -433,13 +453,57 @@ function CuotasPage() {
 
   const montoItem = (i: any) => Number(i.montoFinal ?? i.monto ?? 0)
 
+  const BloqueCambiosCategoria = ({
+    cambios,
+    periodoCsv,
+  }: {
+    cambios: any[]
+    periodoCsv: string
+  }) => {
+    if (!Array.isArray(cambios) || cambios.length === 0) return null
+    return (
+      <div className="border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-2">
+        <p className="text-sm font-semibold text-blue-900">
+          Cambios de categoría por edad ({cambios.length}) — se aplican al
+          confirmar
+        </p>
+        <p className="text-xs text-blue-800">
+          Usá este listado para avisar a las familias. La generación usará la
+          categoría nueva.
+        </p>
+        <ul className="text-sm space-y-1 max-h-48 overflow-y-auto">
+          {cambios.map((c: any, idx: number) => (
+            <li
+              key={idx}
+              className="border border-blue-100 bg-white rounded px-2 py-1"
+            >
+              <strong>{c.nombreCompleto}</strong>
+              {c.nroSocio ? ` · Socio ${c.nroSocio}` : ''}
+              {c.dni ? ` · DNI ${c.dni}` : ''}
+              {' — '}
+              {c.categoriaAnterior} → {c.categoriaNueva}
+              {c.edad != null ? ` (${c.edad} años)` : ''}
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          className="text-xs text-blue-700 underline"
+          onClick={() => descargarCambiosCsv(cambios, periodoCsv)}
+        >
+          Descargar reporte CSV (para avisar)
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-5xl space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-800">Cuotas</h2>
         <p className="text-sm text-gray-500">
           Listado, generación masiva e individual, anulación. Vencida/mora se
-          calculan al consultar (no cambian la base).
+          calculan al consultar. Categoría social por edad al generar.
         </p>
       </div>
 
@@ -739,6 +803,12 @@ function CuotasPage() {
                   Avisos: {preview.errores.join(' · ')}
                 </p>
               )}
+
+              <BloqueCambiosCategoria
+                cambios={preview.cambiosCategoria || []}
+                periodoCsv={periodo}
+              />
+
               <button
                 type="button"
                 onClick={() => void handleConfirmar()}
@@ -931,6 +1001,12 @@ function CuotasPage() {
                     </li>
                   ))}
                 </ul>
+
+                <BloqueCambiosCategoria
+                  cambios={previewInd.cambiosCategoria || []}
+                  periodoCsv={periodoInd}
+                />
+
                 {previewInd.errores?.length > 0 && (
                   <p className="text-xs text-amber-700">
                     {previewInd.errores.join(' · ')}

@@ -6,7 +6,14 @@ import tailwindcss from '@tailwindcss/vite'
 import netlify from '@netlify/vite-plugin-tanstack-start'
 
 export default defineConfig({
-cacheDir: '.vite-cache',
+  // Caché fuera del proyecto (evita EPERM / 504 en Windows)
+  cacheDir: 'C:/temp/vite-club-cuotas',
+  server: {
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
+  },
   plugins: [
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],

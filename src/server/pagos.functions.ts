@@ -248,6 +248,7 @@ export const registrarPagoIndividual = createServerFn({
           periodo,
           observacion: data.observacion?.trim() || null,
           cargadoPor: user.userId,
+          estado: 'activo',
         })
         .returning({
           id: pagos.id,

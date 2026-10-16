@@ -9,10 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TramitesRouteImport } from './routes/tramites'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminUsuariosRouteImport } from './routes/admin/usuarios'
+import { Route as AdminTramitesRouteImport } from './routes/admin/tramites'
 import { Route as AdminTarifarioRouteImport } from './routes/admin/tarifario'
 import { Route as AdminPersonasRouteImport } from './routes/admin/personas'
 import { Route as AdminPagosRouteImport } from './routes/admin/pagos'
@@ -21,6 +23,11 @@ import { Route as AdminCuotasRouteImport } from './routes/admin/cuotas'
 import { Route as AdminConfiguracionRouteImport } from './routes/admin/configuracion'
 import { Route as AdminAdminRouteImport } from './routes/admin/admin'
 
+const TramitesRoute = TramitesRouteImport.update({
+  id: '/tramites',
+  path: '/tramites',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -39,6 +46,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminUsuariosRoute = AdminUsuariosRouteImport.update({
   id: '/usuarios',
   path: '/usuarios',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminTramitesRoute = AdminTramitesRouteImport.update({
+  id: '/tramites',
+  path: '/tramites',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminTarifarioRoute = AdminTarifarioRouteImport.update({
@@ -81,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
+  '/tramites': typeof TramitesRoute
   '/admin/admin': typeof AdminAdminRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/cuotas': typeof AdminCuotasRoute
@@ -88,12 +101,14 @@ export interface FileRoutesByFullPath {
   '/admin/pagos': typeof AdminPagosRoute
   '/admin/personas': typeof AdminPersonasRoute
   '/admin/tarifario': typeof AdminTarifarioRoute
+  '/admin/tramites': typeof AdminTramitesRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
+  '/tramites': typeof TramitesRoute
   '/admin/admin': typeof AdminAdminRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/cuotas': typeof AdminCuotasRoute
@@ -101,6 +116,7 @@ export interface FileRoutesByTo {
   '/admin/pagos': typeof AdminPagosRoute
   '/admin/personas': typeof AdminPersonasRoute
   '/admin/tarifario': typeof AdminTarifarioRoute
+  '/admin/tramites': typeof AdminTramitesRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
 }
 export interface FileRoutesById {
@@ -108,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
+  '/tramites': typeof TramitesRoute
   '/admin/admin': typeof AdminAdminRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/cuotas': typeof AdminCuotasRoute
@@ -115,6 +132,7 @@ export interface FileRoutesById {
   '/admin/pagos': typeof AdminPagosRoute
   '/admin/personas': typeof AdminPersonasRoute
   '/admin/tarifario': typeof AdminTarifarioRoute
+  '/admin/tramites': typeof AdminTramitesRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
 }
 export interface FileRouteTypes {
@@ -123,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/login'
+    | '/tramites'
     | '/admin/admin'
     | '/admin/configuracion'
     | '/admin/cuotas'
@@ -130,12 +149,14 @@ export interface FileRouteTypes {
     | '/admin/pagos'
     | '/admin/personas'
     | '/admin/tarifario'
+    | '/admin/tramites'
     | '/admin/usuarios'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/admin'
     | '/login'
+    | '/tramites'
     | '/admin/admin'
     | '/admin/configuracion'
     | '/admin/cuotas'
@@ -143,12 +164,14 @@ export interface FileRouteTypes {
     | '/admin/pagos'
     | '/admin/personas'
     | '/admin/tarifario'
+    | '/admin/tramites'
     | '/admin/usuarios'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/login'
+    | '/tramites'
     | '/admin/admin'
     | '/admin/configuracion'
     | '/admin/cuotas'
@@ -156,6 +179,7 @@ export interface FileRouteTypes {
     | '/admin/pagos'
     | '/admin/personas'
     | '/admin/tarifario'
+    | '/admin/tramites'
     | '/admin/usuarios'
   fileRoutesById: FileRoutesById
 }
@@ -163,10 +187,18 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
   LoginRoute: typeof LoginRoute
+  TramitesRoute: typeof TramitesRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tramites': {
+      id: '/tramites'
+      path: '/tramites'
+      fullPath: '/tramites'
+      preLoaderRoute: typeof TramitesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -193,6 +225,13 @@ declare module '@tanstack/react-router' {
       path: '/usuarios'
       fullPath: '/admin/usuarios'
       preLoaderRoute: typeof AdminUsuariosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/tramites': {
+      id: '/admin/tramites'
+      path: '/tramites'
+      fullPath: '/admin/tramites'
+      preLoaderRoute: typeof AdminTramitesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/tarifario': {
@@ -255,6 +294,7 @@ interface AdminRouteChildren {
   AdminPagosRoute: typeof AdminPagosRoute
   AdminPersonasRoute: typeof AdminPersonasRoute
   AdminTarifarioRoute: typeof AdminTarifarioRoute
+  AdminTramitesRoute: typeof AdminTramitesRoute
   AdminUsuariosRoute: typeof AdminUsuariosRoute
 }
 
@@ -266,6 +306,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminPagosRoute: AdminPagosRoute,
   AdminPersonasRoute: AdminPersonasRoute,
   AdminTarifarioRoute: AdminTarifarioRoute,
+  AdminTramitesRoute: AdminTramitesRoute,
   AdminUsuariosRoute: AdminUsuariosRoute,
 }
 
@@ -275,6 +316,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   LoginRoute: LoginRoute,
+  TramitesRoute: TramitesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

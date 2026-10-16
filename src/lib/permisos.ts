@@ -57,6 +57,14 @@ export const MODULOS = [
       { key: 'editar', label: 'Crear / desactivar / cambiar roles' },
     ],
   },
+    {
+    key: 'tramites',
+    label: 'Trámites',
+    acciones: [
+      { key: 'ver', label: 'Ver solicitudes' },
+      { key: 'gestionar', label: 'Aprobar / rechazar' },
+    ],
+  },
 ] as const
 
 export type PermisosMap = Record<string, Record<string, boolean>>

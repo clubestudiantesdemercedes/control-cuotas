@@ -9,6 +9,7 @@ import {
   numeric,
   jsonb,
   uniqueIndex,
+  index, // ← agregar
 } from 'drizzle-orm/pg-core'
 
 // ============================================================
@@ -254,7 +255,10 @@ export const mediosPago = pgTable('medios_pago', {
   tipo: text('tipo').notNull(), // efectivo | transferencia | mercado_pago | debito_automatico
   alias: text('alias'),
   cbu: text('cbu'),
+  cuit: text('cuit'),
   datosPago: text('datos_pago'),
+  esDefaultSocial: boolean('es_default_social').notNull().default(false),
+  disciplinaId: integer('disciplina_id').references(() => disciplinas.id),
   activa: boolean('activa').notNull().default(true),
   orden: integer('orden').notNull().default(0),
 })
@@ -272,6 +276,10 @@ export const pagos = pgTable('pagos', {
   periodo: text('periodo'),
   observacion: text('observacion'),
   cargadoPor: integer('cargado_por').references(() => users.id),
+  estado: text('estado').notNull().default('activo'), // activo | anulado
+  anuladoEn: timestamp('anulado_en'),
+  anuladoPor: integer('anulado_por').references(() => users.id),
+  motivoAnulacion: text('motivo_anulacion'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
@@ -313,5 +321,96 @@ export const generacionesCuotas = pgTable('generaciones_cuotas', {
 export const clubConfig = pgTable('club_config', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// --- Trámites públicos (alta / débito / baja) ---
+
+export const solicitudesTramite = pgTable(
+  'solicitudes_tramite',
+  {
+    id: serial('id').primaryKey(),
+
+    /** alta | debito_automatico | baja */
+    tipo: text('tipo').notNull(),
+
+    /** pendiente | aprobada | rechazada | cancelada */
+    estado: text('estado').notNull().default('pendiente'),
+
+    // Documento
+    documentType: text('document_type').notNull().default('DNI'),
+    documentNumber: text('document_number').notNull(),
+
+    // Datos personales
+    lastName: text('last_name').notNull(),
+    firstName: text('first_name').notNull(),
+    birthDate: date('birth_date'),
+    genero: text('genero'),
+
+    // Contacto
+    phone: text('phone'),
+    phoneAlt: text('phone_alt'),
+    email: text('email'),
+
+    // Domicilio real
+    domicilioCalle: text('domicilio_calle'),
+    domicilioLocalidad: text('domicilio_localidad'),
+    domicilioPartido: text('domicilio_partido'),
+    domicilioProvincia: text('domicilio_provincia'),
+    domicilioCp: text('domicilio_cp'),
+
+    // Cobro (si distinto)
+    domicilioCobroDistinto: boolean('domicilio_cobro_distinto')
+      .notNull()
+      .default(false),
+    domicilioCobroCalle: text('domicilio_cobro_calle'),
+    domicilioCobroLocalidad: text('domicilio_cobro_localidad'),
+    domicilioCobroObs: text('domicilio_cobro_obs'),
+
+    // Socio / deporte
+    memberNumberSugerido: text('member_number_sugerido'),
+    esDeportista: boolean('es_deportista').notNull().default(false),
+    disciplinaId: integer('disciplina_id').references(() => disciplinas.id),
+    solicitaBeca: boolean('solicita_beca').notNull().default(false),
+
+    // Forma de pago preferida
+    /** efectivo_cobrador | transferencia | debito_automatico */
+    formaPago: text('forma_pago'),
+    medioPagoId: integer('medio_pago_id').references(() => mediosPago.id),
+
+    // Grupo familiar (texto libre por ahora)
+    grupoFamiliarNota: text('grupo_familiar_nota'),
+
+    // Foto carnet (key en Netlify Blobs u otro storage)
+    fotoCarnetKey: text('foto_carnet_key'),
+
+    observacionSolicitante: text('observacion_solicitante'),
+    motivoBaja: text('motivo_baja'),
+
+    // Resolución admin
+    personId: integer('person_id').references(() => people.id),
+    motivoRechazo: text('motivo_rechazo'),
+    revisadoPor: integer('revisado_por').references(() => users.id),
+    revisadoEn: timestamp('revisado_en'),
+    notasAdmin: text('notas_admin'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('solicitudes_doc_idx').on(t.documentNumber),
+    index('solicitudes_estado_idx').on(t.estado),
+    index('solicitudes_tipo_idx').on(t.tipo),
+  ],
+)
+
+export const linksUtiles = pgTable('links_utiles', {
+  id: serial('id').primaryKey(),
+  titulo: text('titulo').notNull(),
+  url: text('url').notNull(),
+  categoria: text('categoria').notNull().default('otro'), // redes | whatsapp | ubicacion | tramites | otro
+  orden: integer('orden').notNull().default(0),
+  activo: boolean('activo').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

@@ -9,6 +9,12 @@ import {
   previewImportPagos,
   confirmarImportPagos,
 } from '../../server/pagos-import.functions'
+import {
+  buscarPagos,
+  getDetallePago,
+  anularPago,
+  reimputarPago,
+} from '../../server/pagos-reverso.functions'
 
 export const Route = createFileRoute('/admin/pagos')({
   component: PagosPage,
@@ -38,7 +44,9 @@ type MedioPago = {
 }
 
 function PagosPage() {
-  const [tab, setTab] = useState<'individual' | 'importar'>('individual')
+  const [tab, setTab] = useState<'individual' | 'importar' | 'consultar'>(
+    'individual',
+  )
 
   const [busqueda, setBusqueda] = useState('')
   const [buscando, setBuscando] = useState(false)
@@ -63,6 +71,19 @@ function PagosPage() {
   const [previewImport, setPreviewImport] = useState<any>(null)
   const [nombreXls, setNombreXls] = useState('')
   const [importando, setImportando] = useState(false)
+
+  // Consultar / anular / reimputar
+  const [qPago, setQPago] = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+  const [soloActivos, setSoloActivos] = useState(true)
+  const [listaPagos, setListaPagos] = useState<any[]>([])
+  const [buscandoPagos, setBuscandoPagos] = useState(false)
+  const [detallePago, setDetallePago] = useState<any>(null)
+  const [motivoAnul, setMotivoAnul] = useState('')
+  const [cuotasReimputar, setCuotasReimputar] = useState<number[]>([])
+  const [modoReimputar, setModoReimputar] = useState(false)
+  const [trabajandoReverso, setTrabajandoReverso] = useState(false)
 
   useEffect(() => {
     void cargarMediosPago()
@@ -280,9 +301,7 @@ function PagosPage() {
 
   async function handleConfirmarImport() {
     if (!previewImport?.aImportar?.length) return
-    if (
-      !confirm(`¿Registrar ${previewImport.aImportar.length} pagos?`)
-    ) {
+    if (!confirm(`¿Registrar ${previewImport.aImportar.length} pagos?`)) {
       return
     }
 
@@ -319,7 +338,7 @@ function PagosPage() {
     }
   }
 
-    async function descargarErroresImport() {
+  async function descargarErroresImport() {
     if (!previewImport) return
 
     const rows = [
@@ -352,42 +371,189 @@ function PagosPage() {
     )
   }
 
+  async function handleBuscarPagos() {
+    setBuscandoPagos(true)
+    setError('')
+    setMensaje('')
+    setDetallePago(null)
+    setModoReimputar(false)
+    setCuotasReimputar([])
+    try {
+      const res = await buscarPagos({
+        data: {
+          busqueda: qPago || undefined,
+          fechaDesde: fechaDesde || undefined,
+          fechaHasta: fechaHasta || undefined,
+          soloActivos,
+          limit: 80,
+        },
+      })
+      if (!res.ok) setError('Error al buscar pagos')
+      else setListaPagos(res.pagos)
+    } catch (e) {
+      console.error(e)
+      setError('Error al buscar pagos')
+    } finally {
+      setBuscandoPagos(false)
+    }
+  }
+
+  async function handleVerDetalle(pagoId: number) {
+    setError('')
+    setMensaje('')
+    setMotivoAnul('')
+    setModoReimputar(false)
+    setCuotasReimputar([])
+    try {
+      const res = await getDetallePago({ data: { pagoId } })
+      if (!res.ok) {
+        setError(res.error)
+        setDetallePago(null)
+        return
+      }
+      setDetallePago(res)
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo cargar el detalle del pago')
+    }
+  }
+
+  async function handleAnular() {
+    if (!detallePago?.pago?.id) return
+    if (motivoAnul.trim().length < 3) {
+      setError('Indicá un motivo (mínimo 3 caracteres)')
+      return
+    }
+    if (
+      !confirm(
+        `¿Anular el pago #${detallePago.pago.id}? Las cuotas volverán a pendiente.`,
+      )
+    ) {
+      return
+    }
+    setTrabajandoReverso(true)
+    setError('')
+    setMensaje('')
+    try {
+      const res = await anularPago({
+        data: { pagoId: detallePago.pago.id, motivo: motivoAnul },
+      })
+      if (!res.ok) setError(res.error)
+      else {
+        setMensaje(res.mensaje)
+        setDetallePago(null)
+        await handleBuscarPagos()
+      }
+    } catch (e) {
+      console.error(e)
+      setError('Error al anular el pago')
+    } finally {
+      setTrabajandoReverso(false)
+    }
+  }
+
+  function alternarCuotaReimputar(id: number) {
+    setCuotasReimputar((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    )
+  }
+
+  const montoReimputar = useMemo(() => {
+    if (!detallePago?.pendientes) return 0
+    return detallePago.pendientes
+      .filter((c: any) => cuotasReimputar.includes(c.id))
+      .reduce((s: number, c: any) => s + Number(c.montoFinal), 0)
+  }, [detallePago, cuotasReimputar])
+
+  async function handleReimputar() {
+    if (!detallePago?.pago?.id) return
+    if (motivoAnul.trim().length < 3) {
+      setError('Indicá un motivo de reimputación (mínimo 3 caracteres)')
+      return
+    }
+    if (cuotasReimputar.length === 0) {
+      setError('Seleccioná las cuotas destino')
+      return
+    }
+    const montoOrig = Number(detallePago.pago.montoTotal)
+    if (Math.abs(montoReimputar - montoOrig) > 0.01) {
+      setError(
+        `El total destino (${formatearMonto(montoReimputar)}) debe coincidir con el pago original (${formatearMonto(montoOrig)}).`,
+      )
+      return
+    }
+    if (
+      !confirm(
+        `¿Reimputar pago #${detallePago.pago.id} a ${cuotasReimputar.length} cuota(s)? Se anulará el original y se creará uno nuevo.`,
+      )
+    ) {
+      return
+    }
+    setTrabajandoReverso(true)
+    setError('')
+    setMensaje('')
+    try {
+      const res = await reimputarPago({
+        data: {
+          pagoId: detallePago.pago.id,
+          motivo: motivoAnul,
+          nuevasCuotaIds: cuotasReimputar,
+        },
+      })
+      if (!res.ok) setError(res.error)
+      else {
+        setMensaje(res.mensaje)
+        setDetallePago(null)
+        setModoReimputar(false)
+        setCuotasReimputar([])
+        await handleBuscarPagos()
+      }
+    } catch (e) {
+      console.error(e)
+      setError('Error al reimputar')
+    } finally {
+      setTrabajandoReverso(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-800">Pagos</h2>
         <p className="text-sm text-gray-500">
-          Registro individual e importación masiva desde Excel.
+          Registro individual, importación masiva, anulación y reimputación.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setTab('individual')}
-          className={`px-3 py-1.5 rounded-lg text-sm border ${
-            tab === 'individual'
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-gray-700'
-          }`}
-        >
-          Individual
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('importar')}
-          className={`px-3 py-1.5 rounded-lg text-sm border ${
-            tab === 'importar'
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-gray-700'
-          }`}
-        >
-          Importar Excel
-        </button>
+        {(
+          [
+            ['individual', 'Individual'],
+            ['importar', 'Importar Excel'],
+            ['consultar', 'Consultar / anular'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => {
+              setTab(id)
+              setError('')
+              setMensaje('')
+            }}
+            className={`px-3 py-1.5 rounded-lg text-sm border ${
+              tab === id
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 whitespace-pre-line">
           {error}
         </div>
       )}
@@ -715,20 +881,18 @@ function PagosPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {previewImport.aImportar
-                        .slice(0, 40)
-                        .map((r: any) => (
-                          <tr key={r.fila} className="border-t">
-                            <td className="px-2 py-1">{r.fila}</td>
-                            <td className="px-2 py-1">{r.dni}</td>
-                            <td className="px-2 py-1">{r.nombre}</td>
-                            <td className="px-2 py-1">{r.periodo}</td>
-                            <td className="px-2 py-1">
-                              {Number(r.importe).toLocaleString('es-AR')}
-                            </td>
-                            <td className="px-2 py-1">{r.medioNombre}</td>
-                          </tr>
-                        ))}
+                      {previewImport.aImportar.slice(0, 40).map((r: any) => (
+                        <tr key={r.fila} className="border-t">
+                          <td className="px-2 py-1">{r.fila}</td>
+                          <td className="px-2 py-1">{r.dni}</td>
+                          <td className="px-2 py-1">{r.nombre}</td>
+                          <td className="px-2 py-1">{r.periodo}</td>
+                          <td className="px-2 py-1">
+                            {Number(r.importe).toLocaleString('es-AR')}
+                          </td>
+                          <td className="px-2 py-1">{r.medioNombre}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -760,32 +924,306 @@ function PagosPage() {
                 </div>
               )}
 
-              <button
-                type="button"
-                disabled={
-                  importando || !(previewImport.aImportar?.length > 0)
-                }
-                onClick={() => void handleConfirmarImport()}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm px-4 py-2 rounded-lg"
-              >
-                {importando
-                  ? 'Importando...'
-                  : `Confirmar importación (${previewImport.aImportar?.length ?? 0})`}
-              </button>
-                            {(previewImport.errores?.length > 0 ||
-                previewImport.omitidos?.length > 0 ||
-                previewImport.erroresConfirm?.length > 0) && (
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => void descargarErroresImport()}
-                  className="bg-amber-600 hover:bg-amber-700 text-white text-sm px-4 py-2 rounded-lg"
+                  disabled={
+                    importando || !(previewImport.aImportar?.length > 0)
+                  }
+                  onClick={() => void handleConfirmarImport()}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm px-4 py-2 rounded-lg"
                 >
-                  Descargar reporte de errores (Excel)
+                  {importando
+                    ? 'Importando...'
+                    : `Confirmar importación (${previewImport.aImportar?.length ?? 0})`}
                 </button>
-              )}
+                {(previewImport.errores?.length > 0 ||
+                  previewImport.omitidos?.length > 0 ||
+                  previewImport.erroresConfirm?.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => void descargarErroresImport()}
+                    className="bg-amber-600 hover:bg-amber-700 text-white text-sm px-4 py-2 rounded-lg"
+                  >
+                    Descargar reporte de errores (Excel)
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </section>
+      )}
+
+      {tab === 'consultar' && (
+        <div className="space-y-4">
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+            <h3 className="font-semibold text-gray-800">
+              Buscar pagos registrados
+            </h3>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  DNI o n° socio
+                </label>
+                <input
+                  value={qPago}
+                  onChange={(e) => setQPago(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm"
+                  placeholder="Opcional"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Desde</label>
+                <input
+                  type="date"
+                  value={fechaDesde}
+                  onChange={(e) => setFechaDesde(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Hasta</label>
+                <input
+                  type="date"
+                  value={fechaHasta}
+                  onChange={(e) => setFechaHasta(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm pb-2">
+                <input
+                  type="checkbox"
+                  checked={soloActivos}
+                  onChange={(e) => setSoloActivos(e.target.checked)}
+                />
+                Solo activos
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleBuscarPagos()}
+                disabled={buscandoPagos}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
+              >
+                {buscandoPagos ? 'Buscando...' : 'Buscar'}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+            {listaPagos.length === 0 ? (
+              <p className="p-4 text-sm text-gray-500">
+                Sin resultados. Buscá por DNI, socio o rango de fechas.
+              </p>
+            ) : (
+              <div className="overflow-x-auto max-h-72">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-left sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2">#</th>
+                      <th className="px-3 py-2">Fecha</th>
+                      <th className="px-3 py-2">Persona</th>
+                      <th className="px-3 py-2">Monto</th>
+                      <th className="px-3 py-2">Medio</th>
+                      <th className="px-3 py-2">Estado</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {listaPagos.map((p) => (
+                      <tr key={p.id} className="border-t">
+                        <td className="px-3 py-2">{p.id}</td>
+                        <td className="px-3 py-2">
+                          {p.fechaPago
+                            ? formatearFecha(String(p.fechaPago).slice(0, 10))
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {p.lastName}, {p.firstName}
+                          <div className="text-xs text-gray-500">
+                            DNI {p.documentNumber}
+                            {p.memberNumber ? ` · ${p.memberNumber}` : ''}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          {formatearMonto(Number(p.montoTotal))}
+                        </td>
+                        <td className="px-3 py-2">{p.medioNombre || '—'}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={
+                              p.estado === 'anulado'
+                                ? 'text-red-700'
+                                : 'text-green-700'
+                            }
+                          >
+                            {p.estado || 'activo'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            className="text-blue-600 text-xs hover:underline"
+                            onClick={() => void handleVerDetalle(p.id)}
+                          >
+                            Ver
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {detallePago && (
+            <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+              <div className="flex justify-between items-start">
+                <h3 className="font-semibold text-gray-800">
+                  Pago #{detallePago.pago.id}
+                </h3>
+                <button
+                  type="button"
+                  className="text-gray-500 text-sm"
+                  onClick={() => {
+                    setDetallePago(null)
+                    setModoReimputar(false)
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
+              <p className="text-sm">
+                {detallePago.pago.lastName}, {detallePago.pago.firstName} · DNI{' '}
+                {detallePago.pago.documentNumber}
+                {detallePago.pago.memberNumber
+                  ? ` · Socio ${detallePago.pago.memberNumber}`
+                  : ''}
+              </p>
+              <p className="text-sm">
+                Fecha:{' '}
+                {formatearFecha(
+                  String(detallePago.pago.fechaPago).slice(0, 10),
+                )}{' '}
+                · Total:{' '}
+                <strong>
+                  {formatearMonto(Number(detallePago.pago.montoTotal))}
+                </strong>{' '}
+                · {detallePago.pago.medioNombre} · Estado:{' '}
+                <strong>{detallePago.pago.estado}</strong>
+              </p>
+              {detallePago.pago.motivoAnulacion && (
+                <p className="text-xs text-red-700">
+                  Motivo anulación: {detallePago.pago.motivoAnulacion}
+                </p>
+              )}
+
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-1">
+                  Cuotas aplicadas
+                </p>
+                <ul className="text-sm space-y-1">
+                  {detallePago.lineas.map((l: any) => (
+                    <li key={l.pagoCuotaId} className="border rounded px-2 py-1">
+                      {l.periodo} — {l.concepto} ·{' '}
+                      {formatearMonto(Number(l.montoAplicado))} · cuota{' '}
+                      {l.estadoCuota}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {detallePago.pago.estado === 'activo' && (
+                <div className="border-t pt-3 space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Motivo *
+                    </label>
+                    <textarea
+                      value={motivoAnul}
+                      onChange={(e) => setMotivoAnul(e.target.value)}
+                      rows={2}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      placeholder="Ej.: error de período / pago duplicado / reimputación"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={trabajandoReverso}
+                      onClick={() => void handleAnular()}
+                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm px-4 py-2 rounded-lg"
+                    >
+                      {trabajandoReverso ? 'Procesando...' : 'Anular pago'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModoReimputar((v) => !v)
+                        setCuotasReimputar([])
+                      }}
+                      className="border border-blue-600 text-blue-700 text-sm px-4 py-2 rounded-lg"
+                    >
+                      {modoReimputar
+                        ? 'Cancelar reimputación'
+                        : 'Reimputar a otras cuotas'}
+                    </button>
+                  </div>
+
+                  {modoReimputar && (
+                    <div className="border border-blue-100 bg-blue-50 rounded-lg p-3 space-y-2">
+                      <p className="text-sm font-medium text-blue-900">
+                        Elegí cuotas pendientes destino (total debe coincidir:{' '}
+                        {formatearMonto(Number(detallePago.pago.montoTotal))})
+                      </p>
+                      {!(detallePago.pendientes?.length > 0) ? (
+                        <p className="text-xs text-amber-800">
+                          No hay otras cuotas pendientes para esta persona.
+                          Primero generá o dejá pendientes las cuotas destino
+                          (si anulás sin reimputar, las del pago vuelven a
+                          pendiente).
+                        </p>
+                      ) : (
+                        <ul className="text-sm space-y-1 max-h-48 overflow-y-auto">
+                          {detallePago.pendientes.map((c: any) => (
+                            <li key={c.id}>
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={cuotasReimputar.includes(c.id)}
+                                  onChange={() =>
+                                    alternarCuotaReimputar(c.id)
+                                  }
+                                />
+                                {c.periodo} — {c.concepto} ·{' '}
+                                {formatearMonto(Number(c.montoFinal))}
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="text-sm">
+                        Seleccionado:{' '}
+                        <strong>{formatearMonto(montoReimputar)}</strong>
+                      </p>
+                      <button
+                        type="button"
+                        disabled={
+                          trabajandoReverso || cuotasReimputar.length === 0
+                        }
+                        onClick={() => void handleReimputar()}
+                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
+                      >
+                        Confirmar reimputación
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
       )}
     </div>
   )

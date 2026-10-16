@@ -16,6 +16,33 @@ export const Route = createFileRoute('/admin/configuracion')({
   component: ConfiguracionPage,
 })
 
+type MedioForm = {
+  id?: number
+  nombre: string
+  tipo: string
+  alias: string
+  cbu: string
+  cuit: string
+  datosPago: string
+  orden: string
+  esDefaultSocial: boolean
+  disciplinaId: string
+  activa: boolean
+}
+
+const formVacio = (): MedioForm => ({
+  nombre: '',
+  tipo: 'transferencia',
+  alias: '',
+  cbu: '',
+  cuit: '',
+  datosPago: '',
+  orden: '50',
+  esDefaultSocial: false,
+  disciplinaId: '',
+  activa: true,
+})
+
 function ConfiguracionPage() {
   const [ultimo, setUltimo] = useState('')
   const [proximo, setProximo] = useState<number | null>(null)
@@ -31,8 +58,12 @@ function ConfiguracionPage() {
 
   const [medios, setMedios] = useState<any[]>([])
   const [tiposMedio, setTiposMedio] = useState<string[]>([])
-  const [nuevoNombre, setNuevoNombre] = useState('')
-  const [nuevoTipo, setNuevoTipo] = useState('transferencia')
+  const [disciplinas, setDisciplinas] = useState<
+    { id: number; nombre: string }[]
+  >([])
+  const [formMedio, setFormMedio] = useState<MedioForm>(formVacio())
+  const [modalMedioAbierto, setModalMedioAbierto] = useState(false)
+  const [guardandoMedio, setGuardandoMedio] = useState(false)
 
   const cargar = async () => {
     setError('')
@@ -49,6 +80,7 @@ function ConfiguracionPage() {
       if (res.ok) {
         setMedios(res.medios)
         setTiposMedio([...res.tipos])
+        setDisciplinas(res.disciplinas || [])
       }
     } catch (e) {
       console.error(e)
@@ -200,23 +232,77 @@ function ConfiguracionPage() {
     }
   }
 
-  const handleCrearMedio = async (e: React.FormEvent) => {
+  const abrirNuevo = () => {
+    setFormMedio(formVacio())
+    setModalMedioAbierto(true)
+  }
+
+  const abrirEditar = (m: any) => {
+    setFormMedio({
+      id: m.id,
+      nombre: m.nombre || '',
+      tipo: m.tipo || 'transferencia',
+      alias: m.alias || '',
+      cbu: m.cbu || '',
+      cuit: m.cuit || '',
+      datosPago: m.datosPago || '',
+      orden: String(m.orden ?? 50),
+      esDefaultSocial: !!m.esDefaultSocial,
+      disciplinaId: m.disciplinaId ? String(m.disciplinaId) : '',
+      activa: !!m.activa,
+    })
+    setModalMedioAbierto(true)
+  }
+
+  const cerrarModalMedio = () => {
+    if (guardandoMedio) return
+    setModalMedioAbierto(false)
+  }
+
+  const handleGuardarMedio = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setMsg('')
+    setGuardandoMedio(true)
+    const payload = {
+      nombre: formMedio.nombre,
+      tipo: formMedio.tipo,
+      alias: formMedio.alias || undefined,
+      cbu: formMedio.cbu || undefined,
+      cuit: formMedio.cuit || undefined,
+      datosPago: formMedio.datosPago || undefined,
+      orden: Number(formMedio.orden) || 50,
+      esDefaultSocial: formMedio.esDefaultSocial,
+      disciplinaId: formMedio.disciplinaId
+        ? Number(formMedio.disciplinaId)
+        : null,
+      activa: formMedio.activa,
+    }
     try {
-      const res = await crearMedioPago({
-        data: { nombre: nuevoNombre, tipo: nuevoTipo },
-      })
-      if (!res.ok) setError(res.error)
-      else {
-        setMsg('Medio de pago creado')
-        setNuevoNombre('')
-        await cargarMedios()
+      if (formMedio.id) {
+        const res = await actualizarMedioPago({
+          data: { id: formMedio.id, ...payload, activa: formMedio.activa },
+        })
+        if (!res.ok) setError(res.error)
+        else {
+          setMsg('Medio de pago actualizado')
+          setModalMedioAbierto(false)
+          await cargarMedios()
+        }
+      } else {
+        const res = await crearMedioPago({ data: payload })
+        if (!res.ok) setError(res.error)
+        else {
+          setMsg('Medio de pago creado')
+          setModalMedioAbierto(false)
+          await cargarMedios()
+        }
       }
     } catch (err) {
       console.error(err)
-      setError('Error al crear medio de pago')
+      setError('Error al guardar medio de pago')
+    } finally {
+      setGuardandoMedio(false)
     }
   }
 
@@ -230,8 +316,11 @@ function ConfiguracionPage() {
           tipo: m.tipo,
           alias: m.alias || undefined,
           cbu: m.cbu || undefined,
+          cuit: m.cuit || undefined,
           datosPago: m.datosPago || undefined,
           orden: m.orden,
+          esDefaultSocial: !!m.esDefaultSocial,
+          disciplinaId: m.disciplinaId || null,
           activa: !m.activa,
         },
       })
@@ -244,7 +333,7 @@ function ConfiguracionPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-800">Configuración</h2>
         <p className="text-sm text-gray-500">
@@ -293,11 +382,24 @@ function ConfiguracionPage() {
       </form>
 
       <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
-        <h3 className="font-semibold text-gray-800">Medios de pago</h3>
-        <p className="text-xs text-gray-500">
-          Efectivo, débito automático, transferencias por cuenta y Mercado
-          Pago. Solo los activos aparecen al registrar un pago.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-gray-800">
+              Medios de pago / cuentas
+            </h3>
+            <p className="text-xs text-gray-500">
+              CBU, alias, CUIT y disciplina. Se usan en trámites y al registrar
+              pagos.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={abrirNuevo}
+            className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1.5 rounded-lg"
+          >
+            + Agregar
+          </button>
+        </div>
 
         {medios.length === 0 && (
           <button
@@ -310,89 +412,59 @@ function ConfiguracionPage() {
         )}
 
         {medios.length > 0 && (
-          <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-600">
-                <tr>
-                  <th className="px-3 py-2">Nombre</th>
-                  <th className="px-3 py-2">Tipo</th>
-                  <th className="px-3 py-2">Orden</th>
-                  <th className="px-3 py-2">Estado</th>
-                  <th className="px-3 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {medios.map((m) => (
-                  <tr key={m.id} className="border-t">
-                    <td className="px-3 py-2 font-medium">{m.nombre}</td>
-                    <td className="px-3 py-2">{m.tipo}</td>
-                    <td className="px-3 py-2">{m.orden}</td>
-                    <td className="px-3 py-2">
-                      {m.activa ? (
-                        <span className="text-green-700">Activo</span>
-                      ) : (
-                        <span className="text-gray-400">Inactivo</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleActiva(m)}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        {m.activa ? 'Desactivar' : 'Activar'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            {medios.map((m) => (
+              <div
+                key={m.id}
+                className="border rounded-lg p-3 text-sm space-y-1"
+              >
+                <div className="flex flex-wrap justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-gray-900">{m.nombre}</p>
+                    <p className="text-xs text-gray-500">
+                      {m.tipo} · orden {m.orden}
+                      {m.esDefaultSocial ? ' · default social' : ''}
+                      {m.disciplinaNombre ? ` · ${m.disciplinaNombre}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 items-start">
+                    <span
+                      className={
+                        m.activa
+                          ? 'text-green-700 text-xs'
+                          : 'text-gray-400 text-xs'
+                      }
+                    >
+                      {m.activa ? 'Activo' : 'Inactivo'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => abrirEditar(m)}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleActiva(m)}
+                      className="text-xs text-gray-600 hover:underline"
+                    >
+                      {m.activa ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </div>
+                </div>
+                {(m.alias || m.cbu || m.cuit || m.datosPago) && (
+                  <div className="text-xs text-gray-700 bg-gray-50 rounded px-2 py-1.5 space-y-0.5">
+                    {m.alias && <p>Alias: {m.alias}</p>}
+                    {m.cbu && <p>CBU: {m.cbu}</p>}
+                    {m.cuit && <p>CUIT: {m.cuit}</p>}
+                    {m.datosPago && <p>{m.datosPago}</p>}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
-
-        <form
-          onSubmit={handleCrearMedio}
-          className="flex flex-wrap gap-2 items-end border-t pt-3"
-        >
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Nombre</label>
-            <input
-              value={nuevoNombre}
-              onChange={(e) => setNuevoNombre(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm w-56"
-              placeholder="Ej. Transferencia — Cuenta General"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Tipo</label>
-            <select
-              value={nuevoTipo}
-              onChange={(e) => setNuevoTipo(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm"
-            >
-              {(tiposMedio.length
-                ? tiposMedio
-                : [
-                    'efectivo',
-                    'transferencia',
-                    'mercado_pago',
-                    'debito_automatico',
-                  ]
-              ).map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="submit"
-            className="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg"
-          >
-            Agregar
-          </button>
-        </form>
       </div>
 
       <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
@@ -511,6 +583,191 @@ function ConfiguracionPage() {
             La fila es la del Excel (fila 1 = encabezados). Corregí esos datos y
             volvé a importar; las demás ya quedaron actualizadas.
           </p>
+        </div>
+      )}
+
+      {/* Modal editar / crear medio de pago */}
+      {modalMedioAbierto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          onClick={cerrarModalMedio}
+          role="presentation"
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-medio-titulo"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h3
+                id="modal-medio-titulo"
+                className="text-lg font-semibold text-gray-800"
+              >
+                {formMedio.id ? 'Editar medio de pago' : 'Nuevo medio de pago'}
+              </h3>
+              <button
+                type="button"
+                onClick={cerrarModalMedio}
+                className="text-gray-500 hover:text-gray-800 text-sm px-2 py-1"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <form onSubmit={handleGuardarMedio} className="space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Nombre *
+                  </label>
+                  <input
+                    required
+                    value={formMedio.nombre}
+                    onChange={(e) =>
+                      setFormMedio({ ...formMedio, nombre: e.target.value })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Tipo</label>
+                  <select
+                    value={formMedio.tipo}
+                    onChange={(e) =>
+                      setFormMedio({ ...formMedio, tipo: e.target.value })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    {(tiposMedio.length
+                      ? tiposMedio
+                      : [
+                          'efectivo',
+                          'transferencia',
+                          'mercado_pago',
+                          'debito_automatico',
+                        ]
+                    ).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Orden
+                  </label>
+                  <input
+                    value={formMedio.orden}
+                    onChange={(e) =>
+                      setFormMedio({ ...formMedio, orden: e.target.value })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Alias</label>
+                  <input
+                    value={formMedio.alias}
+                    onChange={(e) =>
+                      setFormMedio({ ...formMedio, alias: e.target.value })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">CBU</label>
+                  <input
+                    value={formMedio.cbu}
+                    onChange={(e) =>
+                      setFormMedio({ ...formMedio, cbu: e.target.value })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">CUIT</label>
+                  <input
+                    value={formMedio.cuit}
+                    onChange={(e) =>
+                      setFormMedio({ ...formMedio, cuit: e.target.value })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Disciplina (opcional)
+                  </label>
+                  <select
+                    value={formMedio.disciplinaId}
+                    onChange={(e) =>
+                      setFormMedio({
+                        ...formMedio,
+                        disciplinaId: e.target.value,
+                      })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">Ninguna / general</option>
+                    {disciplinas.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Otros datos (titular, banco, etc.)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={formMedio.datosPago}
+                    onChange={(e) =>
+                      setFormMedio({
+                        ...formMedio,
+                        datosPago: e.target.value,
+                      })
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={formMedio.esDefaultSocial}
+                    onChange={(e) =>
+                      setFormMedio({
+                        ...formMedio,
+                        esDefaultSocial: e.target.checked,
+                      })
+                    }
+                  />
+                  Cuenta por defecto para socio no deportista (solo una)
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-2 border-t">
+                <button
+                  type="submit"
+                  disabled={guardandoMedio}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
+                >
+                  {guardandoMedio ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={cerrarModalMedio}
+                  disabled={guardandoMedio}
+                  className="border text-sm px-4 py-2 rounded-lg"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

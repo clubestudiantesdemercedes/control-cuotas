@@ -18,6 +18,17 @@ export const Route = createRootRoute({
   component: RootComponent,
 })
 
+notFoundComponent: () => (
+  <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="text-center space-y-2">
+      <p className="text-lg font-semibold text-gray-800">Página no encontrada</p>
+      <a href="/" className="text-blue-700 underline text-sm">
+        Volver al inicio
+      </a>
+    </div>
+  </div>
+),
+
 function RootComponent() {
   return (
     <RootDocument>

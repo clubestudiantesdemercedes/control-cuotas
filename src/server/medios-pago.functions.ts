@@ -13,14 +13,39 @@ export const listarMediosPagoAdmin = createServerFn({ method: 'GET' }).handler(
   async () => {
     await requireUser()
     const { db } = await import('../../db')
-    const { mediosPago } = await import('../../db/schema')
+    const { mediosPago, disciplinas } = await import('../../db/schema')
 
     const medios = await db
-      .select()
+      .select({
+        id: mediosPago.id,
+        nombre: mediosPago.nombre,
+        tipo: mediosPago.tipo,
+        alias: mediosPago.alias,
+        cbu: mediosPago.cbu,
+        cuit: mediosPago.cuit,
+        datosPago: mediosPago.datosPago,
+        esDefaultSocial: mediosPago.esDefaultSocial,
+        disciplinaId: mediosPago.disciplinaId,
+        activa: mediosPago.activa,
+        orden: mediosPago.orden,
+        disciplinaNombre: disciplinas.nombre,
+      })
       .from(mediosPago)
+      .leftJoin(disciplinas, eq(mediosPago.disciplinaId, disciplinas.id))
       .orderBy(asc(mediosPago.orden), asc(mediosPago.nombre))
 
-    return { ok: true as const, medios, tipos: TIPOS }
+    const disciplinasActivas = await db
+      .select({ id: disciplinas.id, nombre: disciplinas.nombre })
+      .from(disciplinas)
+      .where(eq(disciplinas.activa, true))
+      .orderBy(asc(disciplinas.nombre))
+
+    return {
+      ok: true as const,
+      medios,
+      tipos: TIPOS,
+      disciplinas: disciplinasActivas,
+    }
   },
 )
 
@@ -46,6 +71,7 @@ export const seedMediosPagoClub = createServerFn({ method: 'POST' }).handler(
         nombre: 'Transferencia — Cuenta General',
         tipo: 'transferencia',
         orden: 10,
+        esDefaultSocial: true,
       },
       {
         nombre: 'Transferencia — Fútbol Formativo',
@@ -80,6 +106,7 @@ export const seedMediosPagoClub = createServerFn({ method: 'POST' }).handler(
         tipo: m.tipo,
         orden: m.orden,
         activa: true,
+        esDefaultSocial: !!(m as any).esDefaultSocial,
       })
     }
 
@@ -87,17 +114,21 @@ export const seedMediosPagoClub = createServerFn({ method: 'POST' }).handler(
   },
 )
 
+type MedioInput = {
+  nombre: string
+  tipo: string
+  alias?: string
+  cbu?: string
+  cuit?: string
+  datosPago?: string
+  orden?: number
+  esDefaultSocial?: boolean
+  disciplinaId?: number | null
+  activa?: boolean
+}
+
 export const crearMedioPago = createServerFn({ method: 'POST' })
-  .inputValidator(
-    (data: {
-      nombre: string
-      tipo: string
-      alias?: string
-      cbu?: string
-      datosPago?: string
-      orden?: number
-    }) => data,
-  )
+  .inputValidator((data: MedioInput) => data)
   .handler(async ({ data }) => {
     await requireUser()
     const { db } = await import('../../db')
@@ -108,6 +139,13 @@ export const crearMedioPago = createServerFn({ method: 'POST' })
     if (!nombre) return { ok: false as const, error: 'Nombre obligatorio' }
     if (!(TIPOS as readonly string[]).includes(tipo)) {
       return { ok: false as const, error: 'Tipo inválido' }
+    }
+
+    if (data.esDefaultSocial) {
+      await db
+        .update(mediosPago)
+        .set({ esDefaultSocial: false })
+        .where(eq(mediosPago.esDefaultSocial, true))
     }
 
     const [row] = await db
@@ -117,9 +155,12 @@ export const crearMedioPago = createServerFn({ method: 'POST' })
         tipo,
         alias: data.alias?.trim() || null,
         cbu: data.cbu?.trim() || null,
+        cuit: data.cuit?.trim() || null,
         datosPago: data.datosPago?.trim() || null,
         orden: data.orden ?? 50,
-        activa: true,
+        esDefaultSocial: !!data.esDefaultSocial,
+        disciplinaId: data.disciplinaId || null,
+        activa: data.activa !== false,
       })
       .returning({ id: mediosPago.id })
 
@@ -128,16 +169,7 @@ export const crearMedioPago = createServerFn({ method: 'POST' })
 
 export const actualizarMedioPago = createServerFn({ method: 'POST' })
   .inputValidator(
-    (data: {
-      id: number
-      nombre: string
-      tipo: string
-      alias?: string
-      cbu?: string
-      datosPago?: string
-      orden?: number
-      activa: boolean
-    }) => data,
+    (data: MedioInput & { id: number; activa: boolean }) => data,
   )
   .handler(async ({ data }) => {
     await requireUser()
@@ -151,6 +183,13 @@ export const actualizarMedioPago = createServerFn({ method: 'POST' })
       return { ok: false as const, error: 'Tipo inválido' }
     }
 
+    if (data.esDefaultSocial) {
+      await db
+        .update(mediosPago)
+        .set({ esDefaultSocial: false })
+        .where(eq(mediosPago.esDefaultSocial, true))
+    }
+
     await db
       .update(mediosPago)
       .set({
@@ -158,8 +197,11 @@ export const actualizarMedioPago = createServerFn({ method: 'POST' })
         tipo,
         alias: data.alias?.trim() || null,
         cbu: data.cbu?.trim() || null,
+        cuit: data.cuit?.trim() || null,
         datosPago: data.datosPago?.trim() || null,
         orden: data.orden ?? 50,
+        esDefaultSocial: !!data.esDefaultSocial,
+        disciplinaId: data.disciplinaId || null,
         activa: data.activa,
       })
       .where(eq(mediosPago.id, data.id))

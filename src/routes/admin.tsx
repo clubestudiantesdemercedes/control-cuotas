@@ -34,6 +34,7 @@ const menu = [
   { to: '/admin/cuotas', label: 'Cuotas', exact: false, modulo: 'cuotas' },
   { to: '/admin/pagos', label: 'Pagos', exact: false, modulo: 'pagos' },
   { to: '/admin/tarifario', label: 'Tarifario', exact: false, modulo: 'tarifario' },
+  { to: '/admin/tramites', label: 'Trámites', exact: false, modulo: 'tramites' },
   { to: '/admin/configuracion', label: 'Configuración', exact: false, modulo: 'configuracion' },
   { to: '/admin/usuarios', label: 'Usuarios', exact: false, modulo: 'usuarios' },
 ] as const

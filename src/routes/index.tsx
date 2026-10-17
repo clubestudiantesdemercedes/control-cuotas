@@ -79,7 +79,6 @@ function PublicConsulta() {
 
   return (
     <div className="min-h-screen relative bg-gradient-to-b from-blue-100 to-blue-50">
-      {/* Escudo de fondo (opcional: public/escudo.png) */}
       <div
         className="pointer-events-none fixed inset-0 flex items-center justify-center opacity-[0.12]"
         aria-hidden
@@ -95,12 +94,12 @@ function PublicConsulta() {
       </div>
 
       <header className="relative z-10 bg-blue-900 text-white py-4 shadow">
-        <div className="max-w-3xl mx-auto px-4 flex items-center justify-between gap-3">
+        <div className="max-w-3xl mx-auto px-4 flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-xl md:text-2xl font-bold">Consulta de Cuotas</h1>
             <p className="text-blue-100 text-sm">Club Atlético Estudiantes</p>
           </div>
-          <div className="flex gap-2 text-sm">
+          <div className="flex gap-2 text-sm flex-wrap">
             <Link
               to="/tramites"
               className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition"
@@ -315,7 +314,6 @@ function PublicConsulta() {
           )}
         </div>
 
-        {/* Links útiles */}
         <section
           id="links"
           className="bg-white/85 backdrop-blur-sm rounded-xl shadow-md p-6 border border-white/60"

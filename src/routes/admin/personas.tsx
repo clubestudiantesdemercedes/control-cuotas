@@ -11,6 +11,7 @@ import {
 import { previsualizarCategoriaDeportiva } from '../../server/categoria.functions'
 import { getProximoNumeroSocio } from '../../server/config.functions'
 import { getCurrentUser } from '../../server/auth.functions'
+import { listarCobradores } from '../../server/cobradores.functions'
 import { tienePermiso } from '../../lib/permisos'
 
 export const Route = createFileRoute('/admin/personas')({
@@ -28,6 +29,9 @@ type SortKey =
 function PersonasPage() {
   const [personas, setPersonas] = useState<any[]>([])
   const [disciplinas, setDisciplinas] = useState<any[]>([])
+  const [cobradoresLista, setCobradoresLista] = useState<
+    { id: number; nombre: string }[]
+  >([])
   const [proximoNumero, setProximoNumero] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -48,6 +52,7 @@ function PersonasPage() {
   const [email, setEmail] = useState('')
   const [tieneDebito, setTieneDebito] = useState(false)
   const [beca, setBeca] = useState(false)
+  const [cobradorId, setCobradorId] = useState('')
   const [esSocio, setEsSocio] = useState(true)
   const [esDeportista, setEsDeportista] = useState(false)
   const [esVitalicio, setEsVitalicio] = useState(false)
@@ -124,6 +129,11 @@ function PersonasPage() {
     return 'Deportista pleno'
   }
 
+  function nombreCobrador(id: number | null | undefined) {
+    if (id == null) return '—'
+    return cobradoresLista.find((c) => c.id === id)?.nombre || '—'
+  }
+
   useEffect(() => {
     void (async () => {
       try {
@@ -188,14 +198,23 @@ function PersonasPage() {
     setLoading(true)
     setError('')
     try {
-      const [resP, resD, resN] = await Promise.all([
+      const [resP, resD, resN, resC] = await Promise.all([
         listarPersonas(),
         listarDeportesParaAlta(),
         getProximoNumeroSocio(),
+        listarCobradores({ data: { soloActivos: false } }),
       ])
       if (resP.ok) setPersonas(resP.personas)
       if (resD.ok) setDisciplinas(resD.disciplinas)
       if (resN.ok) setProximoNumero(resN.proximo)
+      if (resC.ok) {
+        setCobradoresLista(
+          resC.cobradores.map((c: any) => ({
+            id: c.id,
+            nombre: c.nombre,
+          })),
+        )
+      }
     } catch (e) {
       console.error(e)
       setError('Error al cargar datos')
@@ -221,6 +240,7 @@ function PersonasPage() {
     setEmail('')
     setTieneDebito(false)
     setBeca(false)
+    setCobradorId('')
     setEsSocio(true)
     setEsDeportista(false)
     setEsVitalicio(false)
@@ -281,6 +301,7 @@ function PersonasPage() {
     setEmail(p.email || '')
     setTieneDebito(!!p.tieneDebitoAutomatico)
     setBeca(!!p.beca)
+    setCobradorId(p.cobradorId != null ? String(p.cobradorId) : '')
     setEsSocio(!!res.membresia)
     setEsDeportista(!!res.inscripcion)
     setEsVitalicio(res.membresia?.category === 'vitalicio')
@@ -377,6 +398,7 @@ function PersonasPage() {
     setSaving(true)
     setError('')
     setOkMsg('')
+    const cobradorPayload = cobradorId ? Number(cobradorId) : null
     try {
       if (editId != null) {
         const quiereDeporte =
@@ -396,6 +418,7 @@ function PersonasPage() {
             email: email || undefined,
             tieneDebitoAutomatico: tieneDebito,
             beca,
+            cobradorId: cobradorPayload,
             hacerSocio: !esSocio && hacerSocio,
             esVitalicio:
               !quiereDeporte && (esSocio || hacerSocio) ? esVitalicio : false,
@@ -435,6 +458,7 @@ function PersonasPage() {
             email: email || undefined,
             tieneDebitoAutomatico: tieneDebito,
             beca,
+            cobradorId: cobradorPayload,
             esSocio,
             esDeportista: esSocio ? esDeportista : false,
             esVitalicio: esSocio && !esDeportista ? esVitalicio : false,
@@ -492,6 +516,8 @@ function PersonasPage() {
             .toLowerCase()
             .includes(q)
         )
+          return true
+        if (String(p.cobradorNombre || '').toLowerCase().includes(q))
           return true
         return false
       })
@@ -589,7 +615,7 @@ function PersonasPage() {
         <input
           value={filtro}
           onChange={(e) => setFiltro(e.target.value)}
-          placeholder="Buscar por DNI, n° socio o apellido..."
+          placeholder="Buscar por DNI, n° socio, apellido o cobrador..."
           className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[220px]"
         />
         <span className="text-xs text-gray-500">
@@ -641,6 +667,7 @@ function PersonasPage() {
                   >
                     Deporte{sortMark('deporte')}
                   </th>
+                  <th className="px-3 py-2">Cobrador</th>
                 </tr>
               </thead>
               <tbody>
@@ -669,6 +696,9 @@ function PersonasPage() {
                               : ''
                           }`
                         : '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      {p.cobradorNombre || nombreCobrador(p.cobradorId)}
                     </td>
                   </tr>
                 ))}
@@ -714,6 +744,8 @@ function PersonasPage() {
                   <dd>{detalle.persona.phone || '—'}</dd>
                   <dt className="text-gray-500">Email</dt>
                   <dd>{detalle.persona.email || '—'}</dd>
+                  <dt className="text-gray-500">Cobrador</dt>
+                  <dd>{nombreCobrador(detalle.persona.cobradorId)}</dd>
                   <dt className="text-gray-500">Débito automático</dt>
                   <dd>{detalle.persona.tieneDebitoAutomatico ? 'Sí' : 'No'}</dd>
                   <dt className="text-gray-500">Beca</dt>
@@ -898,6 +930,23 @@ function PersonasPage() {
                     onChange={(e) => setAddressCobro(e.target.value)}
                     className="border rounded-lg px-3 py-2 text-sm w-full"
                   />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Cobrador
+                  </label>
+                  <select
+                    value={cobradorId}
+                    onChange={(e) => setCobradorId(e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm w-full bg-white"
+                  >
+                    <option value="">Sin cobrador</option>
+                    {cobradoresLista.map((c) => (
+                      <option key={c.id} value={String(c.id)}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">

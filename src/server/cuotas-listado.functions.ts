@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { requireUser } from './auth.server'
 import { estadoCuotaVisual } from '../lib/estado-cuota'
 
@@ -32,12 +32,16 @@ export const listarCuotasPorPeriodo = createServerFn({ method: 'GET' })
       periodo: string
       estado?: 'todas' | 'pendiente' | 'pagada' | 'anulada'
       q?: string
+      /** undefined = todos; null = sin cobrador; number = ese cobrador */
+      cobradorId?: number | null
     }) => data,
   )
   .handler(async ({ data }) => {
     await requireUser()
     const { db } = await import('../../db')
-    const { cuotasGeneradas } = await import('../../db/schema')
+    const { cuotasGeneradas, people, cobradores } = await import(
+      '../../db/schema'
+    )
 
     const periodo = data.periodo.trim()
     if (!/^\d{4}-\d{2}$/.test(periodo)) {
@@ -48,10 +52,40 @@ export const listarCuotasPorPeriodo = createServerFn({ method: 'GET' })
     if (data.estado && data.estado !== 'todas') {
       conditions.push(eq(cuotasGeneradas.estado, data.estado))
     }
+    if (data.cobradorId === null) {
+      conditions.push(isNull(people.cobradorId))
+    } else if (typeof data.cobradorId === 'number') {
+      conditions.push(eq(people.cobradorId, data.cobradorId))
+    }
 
     let rows = await db
-      .select()
+      .select({
+        id: cuotasGeneradas.id,
+        personId: cuotasGeneradas.personId,
+        membershipId: cuotasGeneradas.membershipId,
+        tipoCuota: cuotasGeneradas.tipoCuota,
+        disciplinaId: cuotasGeneradas.disciplinaId,
+        categoriaDeportivaId: cuotasGeneradas.categoriaDeportivaId,
+        periodo: cuotasGeneradas.periodo,
+        concepto: cuotasGeneradas.concepto,
+        montoOriginal: cuotasGeneradas.montoOriginal,
+        montoFinal: cuotasGeneradas.montoFinal,
+        fechaVencimiento: cuotasGeneradas.fechaVencimiento,
+        estado: cuotasGeneradas.estado,
+        generadaEn: cuotasGeneradas.generadaEn,
+        dni: cuotasGeneradas.dni,
+        nombreCompleto: cuotasGeneradas.nombreCompleto,
+        nroSocio: cuotasGeneradas.nroSocio,
+        subcategoriaCuota: cuotasGeneradas.subcategoriaCuota,
+        disciplinaNombre: cuotasGeneradas.disciplinaNombre,
+        categoriaDeportivaNombre: cuotasGeneradas.categoriaDeportivaNombre,
+        tarifarioId: cuotasGeneradas.tarifarioId,
+        cobradorId: people.cobradorId,
+        cobradorNombre: cobradores.nombre,
+      })
       .from(cuotasGeneradas)
+      .innerJoin(people, eq(cuotasGeneradas.personId, people.id))
+      .leftJoin(cobradores, eq(people.cobradorId, cobradores.id))
       .where(and(...conditions))
       .orderBy(
         asc(cuotasGeneradas.nombreCompleto),
@@ -69,6 +103,9 @@ export const listarCuotasPorPeriodo = createServerFn({ method: 'GET' })
           return true
         }
         if (String(r.concepto || '').toLowerCase().includes(q)) return true
+        if (String(r.cobradorNombre || '').toLowerCase().includes(q)) {
+          return true
+        }
         return false
       })
     }

@@ -41,6 +41,7 @@ export const people = pgTable(
     recordSource: text('record_source'),
     notes: text('notes'),
     beca: boolean('beca').notNull().default(false),
+    cobradorId: integer('cobrador_id').references(() => cobradores.id),
   },
   (t) => [
     uniqueIndex('people_document_idx').on(t.documentType, t.documentNumber),
@@ -410,6 +411,15 @@ export const linksUtiles = pgTable('links_utiles', {
   url: text('url').notNull(),
   categoria: text('categoria').notNull().default('otro'), // redes | whatsapp | ubicacion | tramites | otro
   orden: integer('orden').notNull().default(0),
+  activo: boolean('activo').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const cobradores = pgTable('cobradores', {
+  id: serial('id').primaryKey(),
+  nombre: text('nombre').notNull(),
+  telefono: text('telefono'),
   activo: boolean('activo').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

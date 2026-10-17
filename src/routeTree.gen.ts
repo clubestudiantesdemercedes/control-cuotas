@@ -22,6 +22,7 @@ import { Route as AdminLinksRouteImport } from './routes/admin/links'
 import { Route as AdminDeportesRouteImport } from './routes/admin/deportes'
 import { Route as AdminCuotasRouteImport } from './routes/admin/cuotas'
 import { Route as AdminConfiguracionRouteImport } from './routes/admin/configuracion'
+import { Route as AdminCobradoresRouteImport } from './routes/admin/cobradores'
 import { Route as AdminAdminRouteImport } from './routes/admin/admin'
 
 const TramitesRoute = TramitesRouteImport.update({
@@ -89,6 +90,11 @@ const AdminConfiguracionRoute = AdminConfiguracionRouteImport.update({
   path: '/configuracion',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCobradoresRoute = AdminCobradoresRouteImport.update({
+  id: '/cobradores',
+  path: '/cobradores',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAdminRoute = AdminAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/tramites': typeof TramitesRoute
   '/admin/admin': typeof AdminAdminRoute
+  '/admin/cobradores': typeof AdminCobradoresRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/cuotas': typeof AdminCuotasRoute
   '/admin/deportes': typeof AdminDeportesRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/tramites': typeof TramitesRoute
   '/admin/admin': typeof AdminAdminRoute
+  '/admin/cobradores': typeof AdminCobradoresRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/cuotas': typeof AdminCuotasRoute
   '/admin/deportes': typeof AdminDeportesRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/tramites': typeof TramitesRoute
   '/admin/admin': typeof AdminAdminRoute
+  '/admin/cobradores': typeof AdminCobradoresRoute
   '/admin/configuracion': typeof AdminConfiguracionRoute
   '/admin/cuotas': typeof AdminCuotasRoute
   '/admin/deportes': typeof AdminDeportesRoute
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/tramites'
     | '/admin/admin'
+    | '/admin/cobradores'
     | '/admin/configuracion'
     | '/admin/cuotas'
     | '/admin/deportes'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/tramites'
     | '/admin/admin'
+    | '/admin/cobradores'
     | '/admin/configuracion'
     | '/admin/cuotas'
     | '/admin/deportes'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/tramites'
     | '/admin/admin'
+    | '/admin/cobradores'
     | '/admin/configuracion'
     | '/admin/cuotas'
     | '/admin/deportes'
@@ -295,6 +307,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminConfiguracionRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/cobradores': {
+      id: '/admin/cobradores'
+      path: '/cobradores'
+      fullPath: '/admin/cobradores'
+      preLoaderRoute: typeof AdminCobradoresRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/admin': {
       id: '/admin/admin'
       path: '/admin'
@@ -307,6 +326,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAdminRoute: typeof AdminAdminRoute
+  AdminCobradoresRoute: typeof AdminCobradoresRoute
   AdminConfiguracionRoute: typeof AdminConfiguracionRoute
   AdminCuotasRoute: typeof AdminCuotasRoute
   AdminDeportesRoute: typeof AdminDeportesRoute
@@ -320,6 +340,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAdminRoute: AdminAdminRoute,
+  AdminCobradoresRoute: AdminCobradoresRoute,
   AdminConfiguracionRoute: AdminConfiguracionRoute,
   AdminCuotasRoute: AdminCuotasRoute,
   AdminDeportesRoute: AdminDeportesRoute,

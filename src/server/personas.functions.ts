@@ -8,9 +8,11 @@ import {
   categoriasDeportivas,
   inscripcionesDeportivas,
   clubConfig,
+  cobradores,
 } from '../../db/schema'
 import { requireUser } from './auth.server'
 import { resolverCategoriaDeportiva } from './deportes.server'
+
 
 /** Categoría social por edad (hoy). No aplica a vitalicio. */
 function calcularCategoriaPorEdad(
@@ -99,6 +101,8 @@ export const listarPersonas = createServerFn({ method: 'GET' }).handler(
         deporte: disciplinas.nombre,
         categoriaDeportiva: categoriasDeportivas.nombre,
         subcategoriaCuotaDeporte: inscripcionesDeportivas.subcategoriaCuota,
+        cobradorId: people.cobradorId,
+        cobradorNombre: cobradores.nombre,
       })
       .from(people)
       .leftJoin(
@@ -127,6 +131,7 @@ export const listarPersonas = createServerFn({ method: 'GET' }).handler(
           categoriasDeportivas.id,
         ),
       )
+      .leftJoin(cobradores, eq(people.cobradorId, cobradores.id))
       .orderBy(asc(people.lastName), asc(people.firstName))
       .limit(5000)
 
@@ -230,6 +235,7 @@ export const crearPersona = createServerFn({ method: 'POST' })
       email?: string
       tieneDebitoAutomatico?: boolean
       beca?: boolean
+      cobradorId?: number | null
       esSocio: boolean
       esDeportista: boolean
       /** Solo válido si no es deportista */
@@ -296,6 +302,7 @@ export const crearPersona = createServerFn({ method: 'POST' })
           email,
           tieneDebitoAutomatico: data.tieneDebitoAutomatico ?? false,
           beca: data.beca ?? false,
+          cobradorId: data.cobradorId ?? null,
           status: 'activo',
           recordSource: 'admin',
         })
@@ -396,6 +403,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
       email?: string
       tieneDebitoAutomatico?: boolean
       beca?: boolean
+      cobradorId?: number | null
       hacerSocio?: boolean
       /** Solo si no es / no será deportista */
       esVitalicio?: boolean
@@ -458,6 +466,7 @@ export const actualizarPersona = createServerFn({ method: 'POST' })
           email,
           tieneDebitoAutomatico: data.tieneDebitoAutomatico ?? false,
           beca: data.beca ?? false,
+          cobradorId: data.cobradorId ?? null,
           updatedAt: new Date(),
         })
         .where(eq(people.id, data.id))

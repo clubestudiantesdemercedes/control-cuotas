@@ -16,6 +16,7 @@ import {
   anularCuotasMasiva,
   anularCuotasPersonaPeriodo,
 } from '../../server/cuotas-anular.functions'
+import { listarCobradores } from '../../server/cobradores.functions'
 import { colorEstadoVisual } from '../../lib/estado-cuota'
 
 const MOTIVOS_UI = [
@@ -41,6 +42,10 @@ function CuotasPage() {
   const [estadoFiltro, setEstadoFiltro] = useState<
     'todas' | 'pendiente' | 'pagada' | 'anulada'
   >('todas')
+  const [cobradorFiltro, setCobradorFiltro] = useState('todos')
+  const [cobradoresLista, setCobradoresLista] = useState<
+    { id: number; nombre: string }[]
+  >([])
   const [q, setQ] = useState('')
   const [cuotas, setCuotas] = useState<any[]>([])
   const [resumenLista, setResumenLista] = useState<any>(null)
@@ -97,6 +102,12 @@ function CuotasPage() {
           periodo: periodoLista,
           estado: estadoFiltro,
           q: q || undefined,
+          cobradorId:
+            cobradorFiltro === 'todos'
+              ? undefined
+              : cobradorFiltro === 'sin'
+                ? null
+                : Number(cobradorFiltro),
         },
       })
       if (!res.ok) setError(res.error)
@@ -117,10 +128,25 @@ function CuotasPage() {
   }, [])
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const res = await listarCobradores({ data: { soloActivos: false } })
+        if (res.ok) {
+          setCobradoresLista(
+            res.cobradores.map((c: any) => ({ id: c.id, nombre: c.nombre })),
+          )
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
     if (tab === 'listado' && periodoLista) {
       void cargarListado()
     }
-  }, [tab, periodoLista, estadoFiltro])
+  }, [tab, periodoLista, estadoFiltro, cobradorFiltro])
 
   useEffect(() => {
     void (async () => {
@@ -426,6 +452,7 @@ function CuotasPage() {
         DNI: c.dni ?? '',
         Nro_Socio: c.nroSocio ?? '',
         Nombre: c.nombreCompleto ?? '',
+        Cobrador: c.cobradorNombre ?? '',
         Tipo_cuota: c.tipoCuota ?? '',
         Subcategoria: c.subcategoriaCuota ?? '',
         Disciplina: c.disciplinaNombre ?? '',
@@ -580,12 +607,30 @@ function CuotasPage() {
                 <option value="anulada">Anuladas</option>
               </select>
             </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">
+                Cobrador
+              </label>
+              <select
+                value={cobradorFiltro}
+                onChange={(e) => setCobradorFiltro(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="todos">Todos</option>
+                <option value="sin">Sin cobrador</option>
+                {cobradoresLista.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="flex-1 min-w-[180px]">
               <label className="block text-xs text-gray-600 mb-1">Buscar</label>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="DNI, socio, nombre..."
+                placeholder="DNI, socio, nombre, cobrador..."
                 className="border rounded-lg px-3 py-2 text-sm w-full"
               />
             </div>
@@ -668,6 +713,7 @@ function CuotasPage() {
                     <tr>
                       <th className="px-3 py-2">Persona</th>
                       <th className="px-3 py-2">DNI</th>
+                      <th className="px-3 py-2">Cobrador</th>
                       <th className="px-3 py-2">Concepto</th>
                       <th className="px-3 py-2">Monto</th>
                       <th className="px-3 py-2">Estado</th>
@@ -681,6 +727,9 @@ function CuotasPage() {
                           {c.nombreCompleto || '—'}
                         </td>
                         <td className="px-3 py-2">{c.dni || '—'}</td>
+                        <td className="px-3 py-2">
+                          {c.cobradorNombre || '—'}
+                        </td>
                         <td className="px-3 py-2">{c.concepto}</td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           ${Number(c.montoFinal).toLocaleString('es-AR')}

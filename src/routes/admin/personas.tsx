@@ -85,6 +85,7 @@ function PersonasPage() {
     persona: any
     membresia: any
     inscripcion: any
+    historialMembresias: any[]
   } | null>(null)
 
   const [fechaBaja, setFechaBaja] = useState(
@@ -332,6 +333,7 @@ function PersonasPage() {
         persona: res.persona,
         membresia: res.membresia,
         inscripcion: res.inscripcion,
+        historialMembresias: (res as any).historialMembresias ?? [],
       })
       setFechaBaja(new Date().toISOString().slice(0, 10))
       setMotivoBaja('')
@@ -777,6 +779,61 @@ function PersonasPage() {
                       : '—'}
                   </dd>
                 </dl>
+
+                <div className="border-t pt-3 space-y-2">
+                  <h4 className="text-sm font-semibold text-gray-800">
+                    Historial de membresía
+                  </h4>
+                  {!detalle.historialMembresias?.length ? (
+                    <p className="text-xs text-gray-500">
+                      Sin registros de alta/baja.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2 text-sm max-h-48 overflow-y-auto">
+                      {detalle.historialMembresias.map((h: any) => (
+                        <li
+                          key={h.id}
+                          className={`rounded-lg border px-3 py-2 ${
+                            h.status === 'activo' && !h.endDate
+                              ? 'border-green-200 bg-green-50'
+                              : 'border-gray-200 bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                            <span className="font-medium capitalize">
+                              {h.status === 'activo' && !h.endDate
+                                ? 'Activo'
+                                : h.status === 'baja'
+                                  ? 'Baja'
+                                  : h.status}
+                            </span>
+                            {h.memberNumber ? (
+                              <span className="text-gray-600">
+                                · N° {h.memberNumber}
+                              </span>
+                            ) : null}
+                            {h.category ? (
+                              <span className="text-gray-600">
+                                · {h.category}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            Desde {formatFechaAR(h.startDate)}
+                            {h.endDate
+                              ? ` hasta ${formatFechaAR(h.endDate)}`
+                              : ' — vigente'}
+                          </p>
+                          {h.endReason ? (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              Motivo: {h.endReason}
+                            </p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
 
                 <div className="flex flex-wrap gap-2 pt-2">
                   {puedeEditar && (

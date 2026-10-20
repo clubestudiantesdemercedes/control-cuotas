@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { eq, isNull, and, asc } from 'drizzle-orm'
+import { eq, isNull, and, asc, desc } from 'drizzle-orm'
 import { db } from '../../db'
 import {
   people,
@@ -166,6 +166,22 @@ export const getPersona = createServerFn({ method: 'GET' })
       )
       .limit(1)
 
+    const historialMembresias = await db
+      .select({
+        id: memberships.id,
+        memberNumber: memberships.memberNumber,
+        category: memberships.category,
+        subcategoriaCuota: memberships.subcategoriaCuota,
+        status: memberships.status,
+        startDate: memberships.startDate,
+        endDate: memberships.endDate,
+        endReason: memberships.endReason,
+        notes: memberships.notes,
+      })
+      .from(memberships)
+      .where(eq(memberships.personId, data.id))
+      .orderBy(desc(memberships.startDate), desc(memberships.id))
+
     const inscripciones = await db
       .select({
         id: inscripcionesDeportivas.id,
@@ -199,6 +215,7 @@ export const getPersona = createServerFn({ method: 'GET' })
       persona,
       membresia: membresia ?? null,
       inscripcion: inscripciones[0] ?? null,
+      historialMembresias,
     }
   })
 

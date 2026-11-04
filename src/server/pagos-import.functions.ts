@@ -44,8 +44,29 @@ function excelDateToIso(value: unknown): string | null {
 function periodoFromValue(value: unknown): string | null {
   const iso = excelDateToIso(value)
   if (iso) return iso.slice(0, 7)
-  const s = String(value ?? '').trim()
+  const s = String(value ?? '').trim().toLowerCase()
   if (/^\d{4}-\d{2}$/.test(s)) return s
+
+  // Google Sheets puede entregar períodos como "feb-2026".
+  const match = s.match(/^([a-záéíóúñ]+)[\s/-]+(\d{4})$/i)
+  if (match) {
+    const monthNames: Record<string, string> = {
+      ene: '01', enero: '01',
+      feb: '02', febrero: '02',
+      mar: '03', marzo: '03',
+      abr: '04', abril: '04',
+      may: '05', mayo: '05',
+      jun: '06', junio: '06',
+      jul: '07', julio: '07',
+      ago: '08', agosto: '08',
+      sep: '09', sept: '09', septiembre: '09',
+      oct: '10', octubre: '10',
+      nov: '11', noviembre: '11',
+      dic: '12', diciembre: '12',
+    }
+    const month = monthNames[match[1]]
+    if (month) return `${match[2]}-${month}`
+  }
   return null
 }
 
@@ -87,17 +108,7 @@ function fingerprintOf(row: {
   ].join('|')
 }
 
-function parseDetalleBuffer(buffer: ArrayBuffer): FilaPagoPreview[] {
-  const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
-  const sheetName =
-    wb.SheetNames.find((n) => n.toLowerCase() === 'detalle') || wb.SheetNames[0]
-  const sheet = wb.Sheets[sheetName]
-  const raw: any[][] = XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    defval: '',
-    raw: true,
-  })
-
+function parseDetalleRows(raw: any[][]): FilaPagoPreview[] {
   let headerRow = 0
   for (let i = 0; i < Math.min(5, raw.length); i++) {
     const row = raw[i].map((c) => String(c).toLowerCase())
@@ -107,7 +118,7 @@ function parseDetalleBuffer(buffer: ArrayBuffer): FilaPagoPreview[] {
     }
   }
 
-  const headers = raw[headerRow].map((h) => String(h).trim().toLowerCase())
+  const headers = (raw[headerRow] || []).map((h) => String(h).trim().toLowerCase())
   const idx = {
     dni: headers.findIndex((h) => h === 'dni'),
     fecha: headers.findIndex((h) => h.includes('fecha')),
@@ -192,6 +203,61 @@ function parseDetalleBuffer(buffer: ArrayBuffer): FilaPagoPreview[] {
   return filas
 }
 
+function parseDetalleBuffer(buffer: ArrayBuffer): FilaPagoPreview[] {
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
+  const sheetName =
+    wb.SheetNames.find((n) => n.toLowerCase() === 'detalle') || wb.SheetNames[0]
+  const sheet = wb.Sheets[sheetName]
+  const raw: any[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: '',
+    raw: true,
+  })
+  return parseDetalleRows(raw)
+}
+
+function getGoogleSheetsEnv() {
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> }
+  }
+  const env = runtime.process?.env
+  const url = env?.GOOGLE_SHEETS_URL
+  const token = env?.GOOGLE_SHEETS_API_TOKEN
+
+  if (!url || !token) {
+    throw new Error(
+      'Falta configurar GOOGLE_SHEETS_URL y GOOGLE_SHEETS_API_TOKEN en las variables de entorno del servidor',
+    )
+  }
+
+  return { url, token }
+}
+
+async function fetchGoogleSheetsRows(): Promise<any[][]> {
+  const { url, token } = getGoogleSheetsEnv()
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+    redirect: 'follow',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Google Sheets respondió con HTTP ${response.status}`)
+  }
+
+  const result = (await response.json()) as {
+    ok?: boolean
+    error?: string
+    rows?: any[][]
+  }
+
+  if (!result.ok || !Array.isArray(result.rows)) {
+    throw new Error(result.error || 'La respuesta de Google Sheets no contiene filas')
+  }
+
+  return result.rows
+}
 export const previewImportPagos = createServerFn({ method: 'POST' })
   .inputValidator((data: { fileBase64: string; fileName?: string }) => data)
   .handler(async ({ data }) => {
@@ -256,10 +322,73 @@ export const previewImportPagos = createServerFn({ method: 'POST' })
     }
   })
 
+export const previewImportGoogleSheets = createServerFn({ method: 'POST' })
+  .inputValidator((data: Record<string, never>) => data)
+  .handler(async () => {
+    await requireUser()
+
+    try {
+      const raw = await fetchGoogleSheetsRows()
+      const filas = parseDetalleRows(raw)
+      const fingerprints = filas
+        .filter((f) => f.estado !== 'error')
+        .map((f) => f.fingerprint)
+
+      const existentes = new Set<string>()
+      for (let i = 0; i < fingerprints.length; i += 500) {
+        const chunk = fingerprints.slice(i, i + 500)
+        const found = await db
+          .select({ fingerprint: pagosImportados.fingerprint })
+          .from(pagosImportados)
+          .where(inArray(pagosImportados.fingerprint, chunk))
+        found.forEach((f) => existentes.add(f.fingerprint))
+      }
+
+      let nuevos = 0
+      let existing = 0
+      let errores = 0
+      let sinDni = 0
+
+      const resultado = filas.map((f) => {
+        if (f.estado === 'error') {
+          errores++
+          return f
+        }
+        if (!f.dni) sinDni++
+        if (existentes.has(f.fingerprint)) {
+          existing++
+          return { ...f, estado: 'existente' as const }
+        }
+        nuevos++
+        return { ...f, estado: 'nuevo' as const }
+      })
+
+      return {
+        ok: true as const,
+        fileName: 'Google Sheets · Detalle',
+        total: resultado.length,
+        nuevos,
+        existentes: existing,
+        errores,
+        sinDni,
+        muestraNuevos: resultado.filter((f) => f.estado === 'nuevo').slice(0, 50),
+        muestraErrores: resultado.filter((f) => f.estado === 'error').slice(0, 20),
+        todasNuevas: resultado.filter((f) => f.estado === 'nuevo'),
+      }
+    } catch (err) {
+      console.error('Error al consultar Google Sheets:', err)
+      return {
+        ok: false as const,
+        error: err instanceof Error ? err.message : 'No se pudo consultar Google Sheets',
+      }
+    }
+  })
+
 export const confirmarImportPagos = createServerFn({ method: 'POST' })
   .inputValidator(
     (data: {
       fileName?: string
+      source?: 'xlsx' | 'google_sheets'
       filas: Array<{
         dni: string | null
         fechaPago: string
@@ -320,7 +449,7 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
       const [batch] = await db
         .insert(importBatches)
         .values({
-          source: 'xlsx',
+          source: data.source || 'xlsx',
           fileName: data.fileName || null,
           totalRows: data.filas.length,
           newRows: aInsertar.length,
@@ -346,7 +475,7 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
               categoria: f.categoria,
               importe: String(f.importe),
               formaPago: f.formaPago,
-              source: 'xlsx',
+              source: data.source || 'xlsx',
               fingerprint: f.fingerprint,
               importBatchId: batch.id,
             })),

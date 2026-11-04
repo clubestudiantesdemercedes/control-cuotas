@@ -16,7 +16,7 @@ export type FilaPagoPreview = {
   importe: number
   formaPago: string | null
   fingerprint: string
-  estado: 'nuevo' | 'existente' | 'error'
+  estado: 'nuevo' | 'existente' | 'sin_dni' | 'error'
   error?: string
 }
 
@@ -290,7 +290,7 @@ export const previewImportPagos = createServerFn({ method: 'POST' })
       )
 
       const fingerprints = filas
-        .filter((f) => f.estado !== 'error')
+        .filter((f) => f.estado !== 'error' && Boolean(f.dni))
         .map((f) => f.fingerprint)
 
       const existentes = new Set<string>()
@@ -315,7 +315,10 @@ export const previewImportPagos = createServerFn({ method: 'POST' })
           errores++
           return f
         }
-        if (!f.dni) sinDni++
+        if (!f.dni) {
+          sinDni++
+          return { ...f, estado: 'sin_dni' as const }
+        }
         if (existentes.has(f.fingerprint)) {
           existing++
           return { ...f, estado: 'existente' as const }
@@ -334,7 +337,7 @@ export const previewImportPagos = createServerFn({ method: 'POST' })
         sinDni,
         muestraNuevos: resultado.filter((f) => f.estado === 'nuevo').slice(0, 50),
         muestraErrores: resultado.filter((f) => f.estado === 'error').slice(0, 50),
-        muestraSinDni: resultado.filter((f) => f.estado !== 'error' && !f.dni).slice(0, 50),
+        muestraSinDni: resultado.filter((f) => f.estado === 'sin_dni').slice(0, 50),
         todasNuevas: resultado.filter((f) => f.estado === 'nuevo'),
       }
     } catch (err) {
@@ -352,7 +355,7 @@ export const previewImportGoogleSheets = createServerFn({ method: 'POST' })
       const raw = await fetchGoogleSheetsRows()
       const filas = parseDetalleRows(raw)
       const fingerprints = filas
-        .filter((f) => f.estado !== 'error')
+        .filter((f) => f.estado !== 'error' && Boolean(f.dni))
         .map((f) => f.fingerprint)
 
       const existentes = new Set<string>()
@@ -375,7 +378,10 @@ export const previewImportGoogleSheets = createServerFn({ method: 'POST' })
           errores++
           return f
         }
-        if (!f.dni) sinDni++
+        if (!f.dni) {
+          sinDni++
+          return { ...f, estado: 'sin_dni' as const }
+        }
         if (existentes.has(f.fingerprint)) {
           existing++
           return { ...f, estado: 'existente' as const }
@@ -394,7 +400,7 @@ export const previewImportGoogleSheets = createServerFn({ method: 'POST' })
         sinDni,
         muestraNuevos: resultado.filter((f) => f.estado === 'nuevo').slice(0, 50),
         muestraErrores: resultado.filter((f) => f.estado === 'error').slice(0, 50),
-        muestraSinDni: resultado.filter((f) => f.estado !== 'error' && !f.dni).slice(0, 50),
+        muestraSinDni: resultado.filter((f) => f.estado === 'sin_dni').slice(0, 50),
         todasNuevas: resultado.filter((f) => f.estado === 'nuevo'),
       }
     } catch (err) {
@@ -430,17 +436,26 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
     try {
       // Para Google Sheets, volver a leer la fuente en el servidor al confirmar.
       // Así no confiamos en filas ni fingerprints enviados por el navegador.
-      const filasAProcesar =
+      const filasValidas =
         data.source === 'google_sheets'
           ? parseDetalleRows(await fetchGoogleSheetsRows()).filter((f) => f.estado !== 'error')
-          : data.filas
+          : data.filas.filter((f) => Boolean(f.dni))
 
-      if (!filasAProcesar?.length) {
-        return { ok: false as const, error: 'No hay filas válidas para importar' }
+      // Los pagos sin DNI quedan visibles como pendientes de alta, pero nunca se insertan.
+      const sinDni = filasValidas.filter((f) => !f.dni).length
+      const filasConDni = filasValidas.filter((f) => Boolean(f.dni))
+
+      if (!filasConDni.length) {
+        return {
+          ok: false as const,
+          error: sinDni
+            ? 'No hay pagos con DNI para importar. Los registros sin DNI quedan pendientes de alta.'
+            : 'No hay filas válidas para importar',
+        }
       }
 
       const vistos = new Set<string>()
-      const unicas = filasAProcesar.filter((f) => {
+      const unicas = filasConDni.filter((f) => {
         if (!f.fingerprint || vistos.has(f.fingerprint)) return false
         vistos.add(f.fingerprint)
         return true
@@ -458,7 +473,6 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
       }
 
       const aInsertar = unicas.filter((f) => !existentes.has(f.fingerprint))
-      const sinDni = aInsertar.filter((f) => !f.dni).length
 
       const dnis = [
         ...new Set(aInsertar.map((f) => f.dni).filter(Boolean) as string[]),
@@ -480,9 +494,9 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
         .values({
           source: data.source || 'xlsx',
           fileName: data.fileName || null,
-          totalRows: filasAProcesar.length,
+          totalRows: filasValidas.length,
           newRows: aInsertar.length,
-          existingRows: filasAProcesar.length - aInsertar.length,
+          existingRows: filasConDni.length - aInsertar.length,
           errorRows: 0,
           noDniRows: sinDni,
           importedBy: user.username,
@@ -516,8 +530,8 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
         ok: true as const,
         batchId: batch.id,
         insertados: aInsertar.length,
-        omitidos: filasAProcesar.length - aInsertar.length,
-        sinDni,
+        omitidos: filasConDni.length - aInsertar.length,
+        pendientesAlta: sinDni,
       }
     } catch (err) {
       console.error(err)

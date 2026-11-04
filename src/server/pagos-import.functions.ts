@@ -108,6 +108,18 @@ function fingerprintOf(row: {
   ].join('|')
 }
 
+function meaningfulCell(value: unknown): unknown {
+  if (value == null) return null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === '-' || trimmed === '–' || trimmed === '—') {
+      return null
+    }
+    return trimmed
+  }
+  return value
+}
+
 function parseDetalleRows(raw: any[][]): FilaPagoPreview[] {
   let headerRow = 0
   for (let i = 0; i < Math.min(5, raw.length); i++) {
@@ -136,25 +148,25 @@ function parseDetalleRows(raw: any[][]): FilaPagoPreview[] {
     const row = raw[r]
     if (!row || row.every((c) => c === '' || c == null)) continue
 
-    const fechaPago = excelDateToIso(idx.fecha >= 0 ? row[idx.fecha] : null)
-    const periodo = periodoFromValue(idx.periodo >= 0 ? row[idx.periodo] : null)
-    const importe = parseImporte(idx.importe >= 0 ? row[idx.importe] : null)
-    const dni = normalizarDni(idx.dni >= 0 ? row[idx.dni] : null)
+    const fechaPago = excelDateToIso(meaningfulCell(idx.fecha >= 0 ? row[idx.fecha] : null))
+    const periodo = periodoFromValue(meaningfulCell(idx.periodo >= 0 ? row[idx.periodo] : null))
+    const importe = parseImporte(meaningfulCell(idx.importe >= 0 ? row[idx.importe] : null))
+    const dni = normalizarDni(meaningfulCell(idx.dni >= 0 ? row[idx.dni] : null))
     const nombreSocio =
-      idx.socio >= 0 && row[idx.socio] != null && row[idx.socio] !== ''
-        ? String(row[idx.socio]).trim()
+      idx.socio >= 0 && meaningfulCell(row[idx.socio]) != null
+        ? String(meaningfulCell(row[idx.socio])).trim()
         : null
     const pagador =
-      idx.pagador >= 0 && row[idx.pagador] != null && row[idx.pagador] !== ''
-        ? String(row[idx.pagador]).trim()
+      idx.pagador >= 0 && meaningfulCell(row[idx.pagador]) != null
+        ? String(meaningfulCell(row[idx.pagador])).trim()
         : null
     const categoria =
-      idx.categoria >= 0 && row[idx.categoria] != null && row[idx.categoria] !== ''
-        ? String(row[idx.categoria]).trim()
+      idx.categoria >= 0 && meaningfulCell(row[idx.categoria]) != null
+        ? String(meaningfulCell(row[idx.categoria])).trim()
         : null
     const formaPago =
-      idx.forma >= 0 && row[idx.forma] != null && row[idx.forma] !== ''
-        ? String(row[idx.forma]).trim()
+      idx.forma >= 0 && meaningfulCell(row[idx.forma]) != null
+        ? String(meaningfulCell(row[idx.forma])).trim()
         : null
 
     if (!fechaPago && !periodo && importe == null && !nombreSocio) continue

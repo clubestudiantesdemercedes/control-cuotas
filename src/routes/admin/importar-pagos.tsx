@@ -210,6 +210,101 @@ function ImportarPagosPage() {
             </div>
           )}
 
+          {preview.errores > 0 && (
+            <div className="border border-amber-200 rounded-lg p-3 space-y-2">
+              <h4 className="font-semibold text-amber-800">
+                Registros con errores ({preview.errores})
+              </h4>
+              <p className="text-xs text-gray-600">
+                Estas filas no se importan. El número indica la fila original de la pestaña Detalle.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-amber-50 text-left">
+                    <tr>
+                      <th className="px-2 py-1">Fila</th>
+                      <th className="px-2 py-1">DNI</th>
+                      <th className="px-2 py-1">Socio</th>
+                      <th className="px-2 py-1">Período</th>
+                      <th className="px-2 py-1">Fecha</th>
+                      <th className="px-2 py-1">Importe</th>
+                      <th className="px-2 py-1">Motivo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(preview.muestraErrores || []).map((f: any, i: number) => (
+                      <tr key={f.filaOrigen ?? i} className="border-t">
+                        <td className="px-2 py-1 font-medium">{f.filaOrigen ?? '—'}</td>
+                        <td className="px-2 py-1">{f.dni || '—'}</td>
+                        <td className="px-2 py-1">{f.nombreSocio || '—'}</td>
+                        <td className="px-2 py-1">{f.periodo || '—'}</td>
+                        <td className="px-2 py-1">{f.fechaPago || '—'}</td>
+                        <td className="px-2 py-1">
+                          {f.importe ? '
+              type="button"
+              onClick={handleConfirmar}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm px-4 py-2 rounded-lg"
+            >
+              Confirmar importación ({preview.nuevos} nuevos)
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+ + Number(f.importe).toLocaleString('es-AR') : '—'}
+                        </td>
+                        <td className="px-2 py-1 text-amber-800">{f.error || 'Dato inválido'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {preview.sinDni > 0 && (
+            <div className="border border-blue-200 rounded-lg p-3 space-y-2">
+              <h4 className="font-semibold text-gray-800">
+                Registros válidos sin DNI ({preview.sinDni})
+              </h4>
+              <p className="text-xs text-gray-600">
+                Son advertencias, no errores: pueden importarse, pero quedan sin vincular automáticamente a una persona por DNI.
+                Se muestran hasta 50 registros.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-left">
+                    <tr>
+                      <th className="px-2 py-1">Fila</th>
+                      <th className="px-2 py-1">Socio</th>
+                      <th className="px-2 py-1">Período</th>
+                      <th className="px-2 py-1">Fecha</th>
+                      <th className="px-2 py-1">Importe</th>
+                      <th className="px-2 py-1">Forma</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(preview.muestraSinDni || []).map((f: any, i: number) => (
+                      <tr key={f.filaOrigen ?? i} className="border-t">
+                        <td className="px-2 py-1">{f.filaOrigen ?? '—'}</td>
+                        <td className="px-2 py-1">{f.nombreSocio || '—'}</td>
+                        <td className="px-2 py-1">{f.periodo}</td>
+                        <td className="px-2 py-1">{f.fechaPago}</td>
+                        <td className="px-2 py-1">
+                          ${Number(f.importe).toLocaleString('es-AR')}
+                        </td>
+                        <td className="px-2 py-1">{f.formaPago || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {preview.nuevos > 0 && (
             <button
               type="button"

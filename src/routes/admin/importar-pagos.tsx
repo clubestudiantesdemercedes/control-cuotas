@@ -106,7 +106,7 @@ function ImportarPagosPage() {
         setOkMsg(
           `Importación OK: ${res.insertados} nuevos` +
             (res.omitidos ? `, ${res.omitidos} ya existían` : '') +
-            (res.sinDni ? `, ${res.sinDni} sin DNI` : ''),
+            (res.pendientesAlta ? `, ${res.pendientesAlta} pendientes de alta (sin DNI, no importados)` : ''),
         )
         setPreview(null)
       }
@@ -173,7 +173,7 @@ function ImportarPagosPage() {
             <li>Nuevos: <strong className="text-green-700">{preview.nuevos}</strong></li>
             <li>Ya existentes: <strong>{preview.existentes}</strong></li>
             <li>Con errores: <strong className="text-amber-700">{preview.errores}</strong></li>
-            <li>Sin DNI (entre los válidos): <strong>{preview.sinDni}</strong></li>
+            <li>Pendientes de alta (sin DNI, no se importan): <strong>{preview.sinDni}</strong></li>
           </ul>
 
           {preview.muestraNuevos?.length > 0 && (
@@ -239,8 +239,8 @@ function ImportarPagosPage() {
 
           {preview.sinDni > 0 && (
             <div className="border border-blue-200 rounded-lg p-3 space-y-2">
-              <h4 className="font-semibold text-gray-800">Registros válidos sin DNI ({preview.sinDni})</h4>
-              <p className="text-xs text-gray-600">Son advertencias, no errores: pueden importarse, pero quedan sin vincular automáticamente a una persona por DNI. Se muestran hasta 50 registros.</p>
+              <h4 className="font-semibold text-gray-800">Pendientes de alta — sin DNI ({preview.sinDni})</h4>
+              <p className="text-xs text-gray-600">Estos pagos se muestran como referencia, pero no se importan mientras la persona no tenga DNI registrado. Cuando se complete el alta y se agregue el DNI en Google Sheets, se podrán incorporar en una próxima actualización. Se muestran hasta 50 registros.</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 text-left">

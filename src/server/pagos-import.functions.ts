@@ -6,6 +6,7 @@ import { people, pagosImportados, importBatches } from '../../db/schema'
 import { requireUser } from './auth.server'
 
 export type FilaPagoPreview = {
+  filaOrigen: number
   dni: string | null
   fechaPago: string
   periodo: string
@@ -172,7 +173,13 @@ function parseDetalleRows(raw: any[][]): FilaPagoPreview[] {
     if (!fechaPago && !periodo && importe == null && !nombreSocio) continue
 
     if (!fechaPago || !periodo || importe == null) {
+      const faltantes = [
+        !fechaPago ? 'fecha de pago' : null,
+        !periodo ? 'período' : null,
+        importe == null ? 'importe' : null,
+      ].filter(Boolean)
       filas.push({
+        filaOrigen: r + 1,
         dni,
         fechaPago: fechaPago || '',
         periodo: periodo || '',
@@ -183,7 +190,7 @@ function parseDetalleRows(raw: any[][]): FilaPagoPreview[] {
         formaPago,
         fingerprint: `error-${r}`,
         estado: 'error',
-        error: 'Falta fecha, período o importe',
+        error: `Falta ${faltantes.join(', ')}`,
       })
       continue
     }
@@ -199,6 +206,7 @@ function parseDetalleRows(raw: any[][]): FilaPagoPreview[] {
     })
 
     filas.push({
+      filaOrigen: r + 1,
       dni,
       fechaPago,
       periodo,
@@ -325,7 +333,8 @@ export const previewImportPagos = createServerFn({ method: 'POST' })
         errores,
         sinDni,
         muestraNuevos: resultado.filter((f) => f.estado === 'nuevo').slice(0, 50),
-        muestraErrores: resultado.filter((f) => f.estado === 'error').slice(0, 20),
+        muestraErrores: resultado.filter((f) => f.estado === 'error').slice(0, 50),
+        muestraSinDni: resultado.filter((f) => f.estado !== 'error' && !f.dni).slice(0, 50),
         todasNuevas: resultado.filter((f) => f.estado === 'nuevo'),
       }
     } catch (err) {
@@ -384,7 +393,8 @@ export const previewImportGoogleSheets = createServerFn({ method: 'POST' })
         errores,
         sinDni,
         muestraNuevos: resultado.filter((f) => f.estado === 'nuevo').slice(0, 50),
-        muestraErrores: resultado.filter((f) => f.estado === 'error').slice(0, 20),
+        muestraErrores: resultado.filter((f) => f.estado === 'error').slice(0, 50),
+        muestraSinDni: resultado.filter((f) => f.estado !== 'error' && !f.dni).slice(0, 50),
         todasNuevas: resultado.filter((f) => f.estado === 'nuevo'),
       }
     } catch (err) {

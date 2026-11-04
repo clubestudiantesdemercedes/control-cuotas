@@ -417,13 +417,20 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
 
-    if (!data.filas?.length) {
-      return { ok: false as const, error: 'No hay filas nuevas para importar' }
-    }
-
     try {
+      // Para Google Sheets, volver a leer la fuente en el servidor al confirmar.
+      // Así no confiamos en filas ni fingerprints enviados por el navegador.
+      const filasAProcesar =
+        data.source === 'google_sheets'
+          ? parseDetalleRows(await fetchGoogleSheetsRows()).filter((f) => f.estado !== 'error')
+          : data.filas
+
+      if (!filasAProcesar?.length) {
+        return { ok: false as const, error: 'No hay filas válidas para importar' }
+      }
+
       const vistos = new Set<string>()
-      const unicas = data.filas.filter((f) => {
+      const unicas = filasAProcesar.filter((f) => {
         if (!f.fingerprint || vistos.has(f.fingerprint)) return false
         vistos.add(f.fingerprint)
         return true
@@ -463,9 +470,9 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
         .values({
           source: data.source || 'xlsx',
           fileName: data.fileName || null,
-          totalRows: data.filas.length,
+          totalRows: filasAProcesar.length,
           newRows: aInsertar.length,
-          existingRows: data.filas.length - aInsertar.length,
+          existingRows: filasAProcesar.length - aInsertar.length,
           errorRows: 0,
           noDniRows: sinDni,
           importedBy: user.username,
@@ -499,7 +506,7 @@ export const confirmarImportPagos = createServerFn({ method: 'POST' })
         ok: true as const,
         batchId: batch.id,
         insertados: aInsertar.length,
-        omitidos: data.filas.length - aInsertar.length,
+        omitidos: filasAProcesar.length - aInsertar.length,
         sinDni,
       }
     } catch (err) {

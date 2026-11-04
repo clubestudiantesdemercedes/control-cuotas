@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
   previewImportPagos,
+  previewImportGoogleSheets,
   confirmarImportPagos,
 } from '../../server/pagos-import.functions'
 
@@ -14,6 +15,7 @@ function ImportarPagosPage() {
   const [error, setError] = useState('')
   const [okMsg, setOkMsg] = useState('')
   const [fileName, setFileName] = useState('')
+  const [source, setSource] = useState<'xlsx' | 'google_sheets'>('xlsx')
   const [preview, setPreview] = useState<any>(null)
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -25,6 +27,7 @@ function ImportarPagosPage() {
     setPreview(null)
     setLoading(true)
     setFileName(file.name)
+    setSource('xlsx')
 
     try {
       const buf = await file.arrayBuffer()
@@ -51,6 +54,29 @@ function ImportarPagosPage() {
     }
   }
 
+  const handleGoogleSheets = async () => {
+    setError('')
+    setOkMsg('')
+    setPreview(null)
+    setLoading(true)
+    setFileName('Google Sheets · Detalle')
+    setSource('google_sheets')
+
+    try {
+      const res = await previewImportGoogleSheets({ data: {} })
+      if (!res.ok) {
+        setError(res.error)
+      } else {
+        setPreview(res)
+      }
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo consultar Google Sheets')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleConfirmar = async () => {
     if (!preview?.todasNuevas?.length) return
     setLoading(true)
@@ -60,6 +86,7 @@ function ImportarPagosPage() {
       const res = await confirmarImportPagos({
         data: {
           fileName,
+          source,
           filas: preview.todasNuevas.map((f: any) => ({
             dni: f.dni,
             fechaPago: f.fechaPago,
@@ -96,8 +123,9 @@ function ImportarPagosPage() {
       <div>
         <h2 className="text-xl font-bold text-gray-800">Importar pagos</h2>
         <p className="text-sm text-gray-500">
-          Subí el Excel de Google Sheets (hoja <strong>Detalle</strong>). Solo se
-          importan filas con datos. Las ya importadas no se duplican.
+          Importá desde un archivo Excel o consultá directamente la hoja
+          <strong> Detalle</strong> de Google Sheets. El sistema valida los
+          registros y evita duplicar pagos ya importados.
         </p>
       </div>
 
@@ -116,13 +144,24 @@ function ImportarPagosPage() {
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Archivo .xlsx
         </label>
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          onChange={handleFile}
-          disabled={loading}
-          className="text-sm"
-        />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleFile}
+            disabled={loading}
+            className="text-sm"
+          />
+          <span className="text-xs text-gray-400">o</span>
+          <button
+            type="button"
+            onClick={handleGoogleSheets}
+            disabled={loading}
+            className="bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white text-sm px-4 py-2 rounded-lg"
+          >
+            Actualizar desde Google Sheets
+          </button>
+        </div>
         {loading && <p className="text-sm text-gray-500 mt-2">Procesando…</p>}
       </div>
 
